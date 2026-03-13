@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<!--
+  Main robot XACRO
+  Robot name: virofighter_robot
+
+  Adds material definitions and applies Black to all wheels
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="virofighter_robot">
+
+  <!-- 0. Material definitions-->
+  <material name="Black">
+    <color rgba="0 0 0 1"/>
+  </material>
+  <material name="Grey">
+    <color rgba="0.5 0.5 0.5 1"/>
+  </material>
+  <material name="Blue">
+    <color rgba="0 0 1 1"/>
+  </material>
+  <material name="Red">
+    <color rgba="1 0 0 1"/>
+  </material>
+  <material name="Green">
+    <color rgba="0 1 0 1"/>
+  </material>
+  <material name="Yellow">
+    <color rgba="1 1 0 1"/>
+  </material>
+  <material name="Cyan">
+    <color rgba="0 1 1 1"/>
+  </material>
+  <material name="Magenta">
+    <color rgba="1 0 1 1"/>
+  </material> 
+
+  <!-- 1. Include modular XACRO files -->
+  <xacro:include filename="$(find vf_robot_description)/urdf/base_wheels/base.xacro"/>
+  <xacro:include filename="$(find vf_robot_description)/urdf/base_wheels/wheels.xacro"/>
+  <xacro:include filename="$(find vf_robot_description)/urdf/sensors/d435.xacro"/>
+  <xacro:include filename="$(find vf_robot_description)/urdf/sensors/t265.xacro"/>
+  <xacro:include filename="$(find vf_robot_description)/urdf/sensors/sonars.xacro"/>
+  <xacro:include filename="$(find vf_robot_description)/urdf/sensors/uvc_lights.xacro"/>
+
+  <!-- 2. Global properties-->
+  <xacro:property name="use_sim" value="true"/>
+
+  <!-- 3. Base link (robot body)-->
+  <xacro:base name="link_virofighter"/>
+
+  <!-- 4.  wheels (Black) -->
+  <xacro:wheels parent="link_virofighter" material="Black"/>
+
+  <!-- 5. Sensors (use Grey/Blue)-->
+  <xacro:d435_camera parent="link_virofighter" material="Grey"/>
+  <xacro:t265_fisheye_cameras parent="link_virofighter" material="Red"/>
+  <xacro:sonars parent="link_virofighter" material="Grey"/>
+  <xacro:uvc_lights parent="link_virofighter" material="Blue"/>
+
+
+</robot>

@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="virofighter_sensors">
+
+  <!-- ========================= -->
+  <!-- D435 RGB-D Camera Macro -->
+  <!-- ========================= -->
+
+  <xacro:macro name="d435_camera_macro" params="name parent xyz rpy material">
+
+    <link name="${name}">
+
+      <!-- Inertial -->
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.072"/>
+        <inertia 
+          ixx="7.5e-06"
+          ixy="0.0"
+          ixz="0.0"
+          iyy="5.235e-05"
+          iyz="0.0"
+          izz="5.235e-05"/>
+      </inertial>
+
+      <!-- Visual -->
+      <visual name="${name}_visual">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+      <!-- Collision -->
+      <collision name="${name}_collision">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.09 0.025 0.025"/>
+        </geometry>
+      </collision>
+
+    </link>
+
+    <!-- Fixed Joint to Parent -->
+    <joint name="joint_${name}" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+
+  </xacro:macro>
+
+
+  <!-- ========================= -->
+  <!-- Convenience Macro        -->
+  <!-- ========================= -->
+
+  <xacro:macro name="d435_camera"
+               params="parent 
+                       xyz='0.04512 0 1.77259' 
+                       rpy='0 1.00639 0' 
+                       material='Grey'">
+
+    <xacro:d435_camera_macro
+        name="camera_link"
+        parent="${parent}"
+        xyz="${xyz}"
+        rpy="${rpy}"
+        material="${material}"/>
+
+  </xacro:macro>
+
+</robot>

@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="virofighter_robot_gazebo">
+
+  <!-- 1. Include base robot -->
+  <xacro:include filename="$(find vf_robot_description)/urdf/robot_urdf.xacro"/>
+  
+
+  <!-- 2. Global simulation flag -->
+  <xacro:property name="use_sim" value="true"/>
+
+  <!-- 3. Include Gazebo plugins -->
+  <xacro:include filename="$(find vf_robot_description)/urdf/gazebo/sensors_plugins.xacro"/>
+  <xacro:include filename="$(find vf_robot_description)/urdf/gazebo/differential_drive.xacro"/>
+
+  <xacro:if value="${use_sim}">
+    <!-- Sensors plugins -->
+    <xacro:sensors_plugins/>
+
+    <!-- Differential drive plugin -->
+    <xacro:differential_drive
+        left_wheel="joint_link_front_left_wheel"
+        right_wheel="joint_link_front_right_wheel"
+        wheel_separation="0.35654"
+        wheel_radius="0.08274"
+        base_link="link_virofighter"/>
+
+  </xacro:if>
+
+</robot>

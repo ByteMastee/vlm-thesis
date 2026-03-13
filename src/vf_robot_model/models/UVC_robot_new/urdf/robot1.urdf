@@ -1,0 +1,1098 @@
+<?xml version="1.0"?>
+<!-- created with Phobos 1.0.1 "Capricious Choutengan" -->
+  <robot name="robot">
+
+    <!-- Front Wheels -->
+    <link name="link_front_left_wheel">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="7.90271"/>
+        <inertia ixx="0.01506" ixy="0" ixz="0" iyy="0.01506" iyz="0" izz="0.02704"/>
+      </inertial>
+      <visual name="front_left_wheel">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/front_left_wheel.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+      <collision name="front_left_wheel">
+        <origin xyz="0 0.00277 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="0.08273" length="0.04836"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint_front_left_wheel" type="continuous">
+      <origin xyz="0 -0.17827 0.082" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_front_left_wheel"/>
+      <axis xyz="0 1.0 0"/>
+      <dynamics damping="0.005" friction="0.005" />
+    </joint>
+
+    <link name="link_front_right_wheel">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="7.90462"/>
+        <inertia ixx="0.01507" ixy="0" ixz="0" iyy="0.01507" iyz="0" izz="0.02706"/>
+      </inertial>
+      <visual name="front_right_wheel">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/front_right_wheel.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+      <collision name="front_right_wheel">
+        <origin xyz="0 -0.00277 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="0.08274" length="0.04836"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint_front_right_wheel" type="continuous">
+      <origin xyz="0 0.17827 0.082" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_front_right_wheel"/>
+      <axis xyz="0 1.0 0"/>
+      <dynamics damping="0.005" friction="0.005" />
+    </joint>
+
+    <!-- Rear Wheels & Wrists -->
+    <link name="link_rear_left_wheel">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="2.20995"/>
+        <inertia ixx="0.00166" ixy="0" ixz="0" iyy="0.00166" iyz="0" izz="0.00284"/>
+      </inertial>
+      <visual name="rear_left_wheel">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/rear_left_wheel.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+      <collision name="rear_left_wheel">
+        <origin xyz="-3e-05 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="0.05072" length="0.03598"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint_rear_left_wheel" type="continuous">
+      <origin xyz="0.03802 0 -0.08" rpy="0 0 0"/>
+      <parent link="link_rear_left_wrist"/>
+      <child link="link_rear_left_wheel"/>
+      <axis xyz="0 1.0 0"/>
+      <dynamics damping="0.005" friction="0.005" />
+    </joint>
+
+    <link name="link_rear_left_wrist">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="2.0"/>
+        <inertia ixx="2e-05" ixy="0" ixz="0" iyy="2e-05" iyz="0" izz="2e-05"/>
+      </inertial>
+      <visual name="rear_left_wrist">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/rear_left_wrist.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_rear_left_wrist" type="continuous">
+      <origin xyz="-0.47 -0.16211 0.13" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_rear_left_wrist"/>
+      <axis xyz="0 0 1.0"/>
+      <dynamics damping="0.005" friction="0.005" />
+    </joint>
+
+    <link name="link_rear_right_wheel">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="2.21293"/>
+        <inertia ixx="0.00166" ixy="0" ixz="0" iyy="0.00166" iyz="0" izz="0.00285"/>
+      </inertial>
+      <visual name="rear_right_wheel">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/rear_right_wheel.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+      <collision name="rear_right_wheel">
+        <origin xyz="-3e-05 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="0.05074" length="0.036"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint_rear_right_wheel" type="continuous">
+      <origin xyz="0.03802 0 -0.08" rpy="0 0 0"/>
+      <parent link="link_rear_right_wrist"/>
+      <child link="link_rear_right_wheel"/>
+      <axis xyz="0 1.0 0"/>
+      <dynamics damping="0.005" friction="0.005" />
+    </joint>
+
+    <link name="link_rear_right_wrist">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="2.0"/>
+        <inertia ixx="2e-05" ixy="0" ixz="0" iyy="2e-05" iyz="0" izz="2e-05"/>
+      </inertial>
+      <visual name="rear_right_wrist">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/rear_right_wrist.dae" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_rear_right_wrist" type="continuous">
+      <origin xyz="-0.47 0.16211 0.13" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_rear_right_wrist"/>
+      <axis xyz="0 0 1.0"/>
+      <dynamics damping="0.005" friction="0.005" />
+    </joint>
+
+    <!-- Top D435 RGB-D Camera -->
+    <link name="link_d435_camera">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="d435_camera">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_d435_camera" type="fixed">
+      <origin xyz="0.04512 0 1.77259" rpy="0 1.0472 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_d435_camera"/>
+    </joint>
+
+    <!-- Top 4 fisheye camera -->
+    <link name="link_fisheye_front">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="fisheye_front">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_fisheye_front" type="fixed">
+      <origin xyz="0.07 0 1.845" rpy="0 0.628 -0.0255"/>
+      <parent link="link_virofighter"/>
+      <child link="link_fisheye_front"/>
+    </joint>
+
+    <link name="link_fisheye_left">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="fisheye_left">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_fisheye_left" type="fixed">
+      <origin xyz="-0.2 0.18 1.845" rpy="0 0.628 1.5708"/>
+      <parent link="link_virofighter"/>
+      <child link="link_fisheye_left"/>
+    </joint>
+
+    <link name="link_fisheye_right">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="fisheye_right">
+         <origin xyz="0 0 0" rpy="0 0 0"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_fisheye_right" type="fixed">
+      <origin xyz="-0.2 -0.18 1.845" rpy="0 0.628 -1.5708"/>
+      <parent link="link_virofighter"/>
+      <child link="link_fisheye_right"/>
+    </joint>
+
+    <link name="link_fisheye_rear">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="fisheye_rear">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_fisheye_rear" type="fixed">
+      <origin xyz="-0.5 0 1.845" rpy="3.1416 2.513274 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_fisheye_rear"/>
+    </joint>
+
+    <!-- Ultrasonic Sensors-->
+    <link name="link_front_left_sonar">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="front_left_sonar">
+        <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link> 
+
+    <joint name="joint_front_left_sonar" type="fixed">
+      <origin xyz="0.08 -0.1293 0.2115" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_front_left_sonar"/>
+    </joint>
+
+    <link name="link_front_right_sonar">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="front_right_sonar">
+        <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_front_right_sonar" type="fixed">
+      <origin xyz="0.08 0.1337 0.21166" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_front_right_sonar"/>
+    </joint>
+
+    <link name="link_side_left_sonar">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="side_left_sonar">
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_side_left_sonar" type="fixed">
+      <origin xyz="-0.34701 -0.215 0.21154" rpy="0 0 -1.5708"/>
+      <parent link="link_virofighter"/>
+      <child link="link_side_left_sonar"/>
+    </joint>
+
+    <link name="link_side_right_sonar">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="side_right_sonar">
+        <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_side_right_sonar" type="fixed">
+      <origin xyz="-0.34701 0.215 0.21154" rpy="0 0 1.5708"/>
+      <parent link="link_virofighter"/>
+      <child link="link_side_right_sonar"/>
+    </joint>
+
+    <link name="link_rear_sonar">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="rear_sonar">
+        <origin xyz="0 0 0" rpy="0 0 -3.14159"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_rear_sonar" type="fixed">
+      <origin xyz="-0.54 0.01302 0.33103" rpy="0 0 3.14159"/>
+      <parent link="link_virofighter"/>
+      <child link="link_rear_sonar"/>
+    </joint>
+
+
+    <!-- T265 Realsense Camera/Imu module-->
+    <link name="link_realsense_t265">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="realsense_t265">
+        <origin xyz="0 0 0" rpy="0 0 -3.14156"/>
+      </visual>
+      <collision name="realsense_t265">
+        <origin xyz="0 0 0" rpy="-3.14159 1.5708 0"/>
+        <geometry>
+          <box size="0.024 0.108 0.013"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint_realsense_t265" type="fixed">
+      <origin xyz="-0.52457 0 0.42892" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_realsense_t265"/>
+    </joint>
+
+    <link name="link_t265_camera_fisheye">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="t265_camera_fisheye">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_t265_camera_fisheye" type="fixed">
+      <origin xyz="-0.01319 0.03438 0.00069" rpy="0 0 0"/>
+      <parent link="link_realsense_t265"/>
+      <child link="link_t265_camera_fisheye"/>
+    </joint>
+
+    <link name="link_t265_camera_gyro">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="t265_camera_gyro">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_t265_camera_gyro" type="fixed">
+      <origin xyz="-0.01319 -0.031 0.00069" rpy="0 0 0"/>
+      <parent link="link_realsense_t265"/>
+      <child link="link_t265_camera_gyro"/>
+    </joint>
+
+    <link name="link_t265_camera_odom">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="t265_camera_odom">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.00346"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="joint_t265_camera_odom" type="fixed">
+      <origin xyz="-0.01319 0.00169 0.00069" rpy="0 0 0"/>
+      <parent link="link_realsense_t265"/>
+      <child link="link_t265_camera_odom"/>
+    </joint>
+
+    <!-- UVC Lights -->  
+    <link name="link_uvc_lights">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="light_1">
+        <origin xyz="-0.10432 -0.07221 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="UVC"/>
+      </visual>
+      <visual name="light_2">
+        <origin xyz="-0.10432 0.07284 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="UVC"/>
+      </visual>
+      <visual name="light_3">
+        <origin xyz="0.0941 0.1377 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="UVC"/>
+      </visual>
+      <visual name="light_4">
+        <origin xyz="-0.02265 0.1377 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="UVC"/>
+      </visual>
+      <visual name="light_5">
+        <origin xyz="0.0941 -0.14053 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="UVC"/>
+      </visual>
+      <visual name="light_6">
+        <origin xyz="-0.02265 -0.14053 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="UVC"/>
+      </visual>
+    </link>
+
+    <joint name="link_uvc_lights" type="fixed">
+      <origin xyz="-0.3361 0 0.52606" rpy="0 0 0"/>
+      <parent link="link_virofighter"/>
+      <child link="link_uvc_lights"/>
+    </joint>
+
+    <material name="UVC">
+      <color rgba="0.48542 0.30838 0.8 1.0"/>
+    </material>
+
+
+    <!-- Main Body -->
+    <link name="link_virofighter">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="10.011"/>
+        <inertia ixx="13.2077" ixy="0" ixz="0" iyy="13.3744" iyz="0" izz="0.34275"/>
+      </inertial>
+      <visual name="virofighter">
+        <origin xyz="-0.25 0 0.049" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/virofighter.dae" scale="1.0 1.0 1.0"/>
+        </geometry>
+      </visual>
+      <collision name="virofighter">
+        <origin xyz="-0.22008 0.00079 1.00857" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_model/models/UVC_robot_new/meshes/dae/Cube.019.dae" scale="1.0 1.0 1.0"/>
+        </geometry>
+      </collision>
+    </link>
+
+<!-- Bemásolni minden axis alá: <dynamics damping="0.005" friction="0.005" /> -->
+
+    <!-- D435 RGB-D Camera -->
+    <gazebo reference="link_d435_camera">
+      <sensor name="d435_rgbd_camera" type="depth">
+        <update_rate>30</update_rate>
+
+        <camera>
+          <horizontal_fov>1.0472</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>5.0</far>
+          </clip>
+        </camera>
+
+        <plugin name="d435_rgbd_controller" filename="libgazebo_ros_camera.so">
+          <!-- ROS2 namespace -->
+          <ros>
+            <namespace>/d435_rgbd_camera</namespace>
+          </ros>
+
+          <!-- TF frame -->
+          <frame_name>link_d435_camera</frame_name>
+
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+
+          <!-- Camera names & topics -->
+          <cameraName>d435_rgbd_camera</cameraName>
+          <imageTopicName>/d435_rgbd_camera/color/image_raw</imageTopicName>
+          <cameraInfoTopicName>/d435_rgbd_camera/color/camera_info</cameraInfoTopicName>
+          <depthImageTopicName>/d435_rgbd_camera/depth/image_raw</depthImageTopicName>
+          <depthCameraInfoTopicName>/d435_rgbd_camera/depth/camera_info</depthCameraInfoTopicName>
+          <pointCloudTopicName>/d435_rgbd_camera/depth/points</pointCloudTopicName>
+
+          <!-- Stereo baseline hack -->
+          <baseline>0.05</baseline>
+          <pointCloudCutoff>0.2</pointCloudCutoff>
+          <pointCloudCutoffMax>5.0</pointCloudCutoffMax>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Front Fisheye -->
+    <gazebo reference="link_fisheye_front">
+      <sensor name="fisheye_front_camera" type="wideanglecamera">
+        <camera>
+          <horizontal_fov>6.283</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <lens>
+            <type>custom</type>
+            <custom_function>
+              <c1>1.0</c1>
+              <c2>4.0</c2>
+              <f>1.0</f>
+              <fun>tan</fun>
+            </custom_function>
+            <scale_to_hfov>true</scale_to_hfov>
+            <cutoff_angle>3.1415</cutoff_angle>
+            <env_texture_size>512</env_texture_size>
+          </lens>
+          <always_on>true</always_on>
+          <update_rate>30</update_rate>
+        </camera>
+        <plugin name="fisheye_front_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/fisheye_front</namespace>
+          </ros>
+          <frame_name>fisheye_front_link</frame_name>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+          <cameraName>fisheye_front_camera</cameraName>
+          <imageTopicName>/fisheye_front/image_raw</imageTopicName>
+          <cameraInfoTopicName>/fisheye_front/camera_info</cameraInfoTopicName>
+          <distortionK1>-0.05268338601520044</distortionK1>
+          <distortionK2>0.004889702830369265</distortionK2>
+          <distortionK3>-0.0031745403716575385</distortionK3>
+          <distortionT1>0.00015737212611983246</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>271.7130252551282</CxPrime>
+          <Cx>320.79340187886527</Cx>
+          <Cy>226.64923232430766</Cy>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Left Fisheye -->
+    <gazebo reference="link_fisheye_left">
+      <sensor name="fisheye_left_camera" type="wideanglecamera">
+        <camera>
+          <horizontal_fov>6.283</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <lens>
+            <type>custom</type>
+            <custom_function>
+              <c1>1.0</c1>
+              <c2>4.0</c2>
+              <f>1.0</f>
+              <fun>tan</fun>
+            </custom_function>
+            <scale_to_hfov>true</scale_to_hfov>
+            <cutoff_angle>3.1415</cutoff_angle>
+            <env_texture_size>512</env_texture_size>
+          </lens>
+          <always_on>true</always_on>
+          <update_rate>30</update_rate>
+        </camera>
+        <plugin name="fisheye_left_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/fisheye_left</namespace>
+          </ros>
+          <frame_name>fisheye_left_link</frame_name>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+          <cameraName>fisheye_left_camera</cameraName>
+          <imageTopicName>/fisheye_left/image_raw</imageTopicName>
+          <cameraInfoTopicName>/fisheye_left/camera_info</cameraInfoTopicName>
+          <distortionK1>0.01821991787199912</distortionK1>
+          <distortionK2>-0.25419124421404754</distortionK2>
+          <distortionK3>0.46973810494330803</distortionK3>
+          <distortionT1>-0.25781213898861643</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>261.490408199468</CxPrime>
+          <Cx>314.98982242180386</Cx>
+          <Cy>239.4882574800282</Cy>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Right Fisheye -->
+    <gazebo reference="link_fisheye_right">
+      <sensor name="fisheye_right_camera" type="wideanglecamera">
+        <camera>
+          <horizontal_fov>6.283</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <lens>
+            <type>custom</type>
+            <custom_function>
+              <c1>1.0</c1>
+              <c2>4.0</c2>
+              <f>1.0</f>
+              <fun>tan</fun>
+            </custom_function>
+            <scale_to_hfov>true</scale_to_hfov>
+            <cutoff_angle>3.1415</cutoff_angle>
+            <env_texture_size>512</env_texture_size>
+          </lens>
+          <always_on>true</always_on>
+          <update_rate>30</update_rate>
+        </camera>
+        <plugin name="fisheye_right_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/fisheye_right</namespace>
+          </ros>
+          <frame_name>fisheye_right_link</frame_name>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+          <cameraName>fisheye_right_camera</cameraName>
+          <imageTopicName>/fisheye_right/image_raw</imageTopicName>
+          <cameraInfoTopicName>/fisheye_right/camera_info</cameraInfoTopicName>
+          <distortionK1>0.050174666740202295</distortionK1>
+          <distortionK2>-0.12848166442117862</distortionK2>
+          <distortionK3>-0.06202581927264942</distortionK3>
+          <distortionT1>0.05783883407588011</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>329.701077564263</CxPrime>
+          <Cx>317.70158610820454</Cx>
+          <Cy>217.57751413067652</Cy>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Rear Fisheye -->
+    <gazebo reference="link_fisheye_rear">
+      <sensor name="fisheye_rear_camera" type="wideanglecamera">
+        <camera>
+          <horizontal_fov>6.283</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <lens>
+            <type>custom</type>
+            <custom_function>
+              <c1>1.0</c1>
+              <c2>4.0</c2>
+              <f>1.0</f>
+              <fun>tan</fun>
+            </custom_function>
+            <scale_to_hfov>true</scale_to_hfov>
+            <cutoff_angle>3.1415</cutoff_angle>
+            <env_texture_size>512</env_texture_size>
+          </lens>
+          <always_on>true</always_on>
+          <update_rate>30</update_rate>
+        </camera>
+        <plugin name="fisheye_rear_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/fisheye_rear</namespace>
+          </ros>
+          <frame_name>fisheye_rear_link</frame_name>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+          <cameraName>fisheye_rear_camera</cameraName>
+          <imageTopicName>/fisheye_rear/image_raw</imageTopicName>
+          <cameraInfoTopicName>/fisheye_rear/camera_info</cameraInfoTopicName>
+          <distortionK1>-0.0082865186976524</distortionK1>
+          <distortionK2>-0.09458804304353491</distortionK2>
+          <distortionK3>0.1096470205544713</distortionK3>
+          <distortionT1>-0.04796533786991879</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>269.1521483612247</CxPrime>
+          <Cx>320.1982313350871</Cx>
+          <Cy>225.50291790861093</Cy>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Realsense t265 stereo fisheye camera -->
+    <gazebo reference="link_t265_camera_fisheye">
+      <sensor name="t265_fisheye_camera" type="wideanglecamera">
+        <camera>
+          <horizontal_fov>6.283</horizontal_fov>
+          <image>
+            <width>800</width>
+            <height>848</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <lens>
+            <type>custom</type>
+            <custom_function>
+              <c1>1.05</c1>
+              <c2>4</c2>
+              <f>1.0</f>
+              <fun>tan</fun>
+            </custom_function>
+            <scale_to_hfov>true</scale_to_hfov>
+            <cutoff_angle>3.1415</cutoff_angle>
+            <env_texture_size>512</env_texture_size>
+          </lens>
+          <always_on>true</always_on>
+          <update_rate>30</update_rate>
+        </camera>
+
+        <plugin name="t265_fisheye_controller" filename="libgazebo_ros_camera.so">
+          <!-- ROS2-style namespace -->
+          <ros>
+            <namespace>/t265_fisheye_camera</namespace>
+          </ros>
+
+          <!-- TF frame -->
+          <frame_name>t265_link</frame_name>
+
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+
+          <!-- Camera names & topics -->
+          <cameraName>t265_fisheye_camera</cameraName>
+          <imageTopicName>/t265_fisheye_camera/image_raw</imageTopicName>
+          <cameraInfoTopicName>/t265_fisheye_camera/camera_info</cameraInfoTopicName>
+
+          <!-- Stereo baseline hack (if needed) -->
+          <hackBaseline>0.07</hackBaseline>
+
+          <!-- Calibration / distortion parameters -->
+          <distortionK1>-0.007419134024530649</distortionK1>
+          <distortionK2>0.041209351271390915</distortionK2>
+          <distortionK3>-0.03811917081475258</distortionK3>
+          <distortionT1>0.006366158835589886</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>416.00531005859375</CxPrime>
+          <Cx>16.00531005859375</Cx>
+          <Cy>403.38909912109375</Cy>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Realsense T265 IMU / gyro -->
+    <gazebo reference="link_t265_camera_gyro">
+      <gravity>true</gravity>
+      <sensor name="t265_camera_imu" type="imu">
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <visualize>false</visualize>
+        <plugin filename="libgazebo_ros_imu_sensor.so" name="t265_imu_plugin">
+          <topicName>/t265/gyro/sample</topicName>
+          <bodyName>link_t265_camera_gyro</bodyName>
+          <updateRateHZ>30</updateRateHZ>
+          <gaussianNoise>0.000001</gaussianNoise>
+          <xyzOffset>0 0 0</xyzOffset>
+          <rpyOffset>0 0 0</rpyOffset>
+          <frameName>t265_link</frameName>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Realsense T265 odometry -->
+    <gazebo reference="link_t265_camera_odom">
+      <plugin name="t265_odom_plugin" filename="libgazebo_ros_p3d.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>30</updateRate>
+        <bodyName>link_t265_camera_odom</bodyName>
+        <topicName>/t265/odom/sample</topicName>
+        <gaussianNoise>0.001</gaussianNoise>
+        <frameName>odom</frameName>
+        <xyzOffsets>0 0 0</xyzOffsets>
+        <rpyOffsets>0 0 0</rpyOffsets>
+      </plugin>
+    </gazebo>
+
+
+    <!-- Ultrasonic rear-->
+    <gazebo reference="link_rear_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/rear</topicName>
+          <frameName>rear</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+    
+    <!-- Ultrasonic side left-->
+    <gazebo reference="link_side_left_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/left</topicName>
+          <frameName>left</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+    
+    <!-- Ultrasonic side right-->
+    <gazebo reference="link_side_right_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/right</topicName>
+          <frameName>right</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+    
+    <!-- Ultrasonic front left-->
+    <gazebo reference="link_front_left_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/front_left</topicName>
+          <frameName>front_left</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+  <!-- Ultrasonic front right-->
+    <gazebo reference="link_front_right_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/front_right</topicName>
+          <frameName>front_right</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+    
+    <!-- Differential drive -->
+    <gazebo>
+      <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>100</updateRate>
+
+        <left_joint>joint_front_left_wheel</left_joint>
+        <right_joint>joint_front_right_wheel</right_joint>
+
+        <wheel_separation>0.35654</wheel_separation>
+        <wheel_diameter>0.16546</wheel_diameter>
+
+        <torque>20</torque>
+
+        <commandTopic>/cmd_vel</commandTopic>
+        <odometryTopic>/odom</odometryTopic>
+        <odometryFrame>odom</odometryFrame>
+
+        <robotBaseFrame>link_virofighter</robotBaseFrame>
+        <publishOdomTF>true</publishOdomTF>
+      </plugin>
+    </gazebo>
+
+
+  </robot>

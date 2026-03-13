@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- =====================================================
+       UV-C Lights (exact port from old URDF)
+       - Single link
+       - 6 visual cylinders
+       ===================================================== -->
+
+  <xacro:macro name="uvc_lights" params="parent material='Blue'">
+
+    <!-- UVC lights link -->
+    <link name="link_uvc_lights">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001" ixy="0" ixz="0"
+                 iyy="0.001" iyz="0"
+                 izz="0.001"/>
+      </inertial>
+
+      <!-- Light 1 -->
+      <visual name="uvc_light_1">
+        <origin xyz="-0.10432 -0.07221 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+      <!-- Light 2 -->
+      <visual name="uvc_light_2">
+        <origin xyz="-0.10432 0.07284 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+      <!-- Light 3 -->
+      <visual name="uvc_light_3">
+        <origin xyz="0.0941 0.1377 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+      <!-- Light 4 -->
+      <visual name="uvc_light_4">
+        <origin xyz="-0.02265 0.1377 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+      <!-- Light 5 -->
+      <visual name="uvc_light_5">
+        <origin xyz="0.0941 -0.14053 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+      <!-- Light 6 -->
+      <visual name="uvc_light_6">
+        <origin xyz="-0.02265 -0.14053 0.64035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.01004" length="1.32715"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+
+    </link>
+
+    <!-- Fixed joint to robot base (EXACT MATCH) -->
+    <joint name="joint_uvc_lights" type="fixed">
+      <parent link="${parent}"/>
+      <child link="link_uvc_lights"/>
+      <origin xyz="-0.3361 0 0.52606" rpy="0 0 0"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

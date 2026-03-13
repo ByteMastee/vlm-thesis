@@ -1,0 +1,344 @@
+<!--  
+  Bemásolni minden axis alá:
+  	<dynamics damping="0.005" friction="0.005" />
+-->
+
+    <!-- D435 realsense kamera -->
+    <gazebo reference="link_d435_camera">
+      <sensor name='camera' type='depth'>
+        <update_rate>10</update_rate>
+        <camera name='__default__'>
+          <horizontal_fov>1.0472</horizontal_fov>
+          <image>
+	    <width>640</width>
+	    <height>480</height>
+	    <format>R8G8B8</format>
+          </image>
+          <clip>
+	    <near>0.05</near>
+	    <far>3</far>
+          </clip>
+        </camera>
+        <plugin name='camera_plugin' filename='libuvcrobot_openni_kinect.so'>
+          <baseline>0.2</baseline>
+          <alwaysOn>1</alwaysOn>
+          <updateRate>0.0</updateRate>
+          <cameraName>camera_ir</cameraName>
+          <imageTopicName>/d435/color/image_raw</imageTopicName>
+          <cameraInfoTopicName>/d435/color/camera_info</cameraInfoTopicName>
+          <depthImageTopicName>/d435/depth/image_rect_raw</depthImageTopicName>
+          <depthImageCameraInfoTopicName>/d435/depth/camera_info</depthImageCameraInfoTopicName>
+          <pointCloudTopicName>/d435/depth/color/points</pointCloudTopicName>
+          <frameName>d435_link</frameName>
+          <pointCloudCutoff>0.5</pointCloudCutoff>
+          <pointCloudCutoffMax>3.0</pointCloudCutoffMax>
+          <distortionK1>0</distortionK1>
+          <distortionK2>0</distortionK2>
+          <distortionK3>0</distortionK3>
+          <distortionT1>0</distortionT1>
+          <distortionT2>0</distortionT2>
+          <CxPrime>0</CxPrime>
+          <Cx>0</Cx>
+          <Cy>0</Cy>
+          <focalLength>0</focalLength>
+          <hackBaseline>0</hackBaseline>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Realsense t265 fisheye -->
+    <gazebo reference="link_t265_camera_fisheye">
+      <sensor name="camera" type="wideanglecamera">
+        <camera>
+          <horizontal_fov>6.283</horizontal_fov>
+          <image>
+	    <width>800</width>
+	    <height>848</height>
+          </image>
+          <clip>
+	    <near>0.1</near>
+	    <far>100</far>
+          </clip>
+          <lens>
+	    <type>custom</type>
+	    <custom_function>
+	      <c1>1.05</c1>
+	      <c2>4</c2>
+	      <f>1.0</f>
+	      <fun>tan</fun>
+	    </custom_function>
+	    <scale_to_hfov>true</scale_to_hfov>
+	    <cutoff_angle>3.1415</cutoff_angle>
+	    <env_texture_size>512</env_texture_size>
+          </lens>
+          <always_on>true</always_on>
+          <update_rate>30</update_rate>
+        </camera>
+        <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30</updateRate>
+          <cameraName>t265_camera</cameraName>
+          <imageTopicName>/t265/fisheye/image_raw</imageTopicName>
+          <cameraInfoTopicName>/t265/fisheye/camera_info</cameraInfoTopicName>
+          <frameName>t265_link</frameName>
+          <hackBaseline>0.07</hackBaseline>
+          <distortionK1>-0.007419134024530649</distortionK1>
+          <distortionK2>0.041209351271390915</distortionK2>
+          <distortionK3>-0.03811917081475258</distortionK3>
+          <distortionT1>0.006366158835589886</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>416.00531005859375</CxPrime>
+          <Cx>16.00531005859375</Cx>
+          <Cy>403.38909912109375</Cy>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Realsense t265 gyro -->
+    <gazebo reference="link_t265_camera_gyro">
+      <gravity>true</gravity>
+      <sensor name="t265_camera_imu" type="imu">
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <visualize>false</visualize>
+        <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+          <topicName>/t265/gyro/sample</topicName>
+          <bodyName>link_t265_camera_gyro</bodyName>
+          <updateRateHZ>30</updateRateHZ>
+          <gaussianNoise>0.000001</gaussianNoise>
+          <xyzOffset>0 0 0</xyzOffset>
+          <rpyOffset>0 0 0</rpyOffset>
+          <frameName>t265_link</frameName>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Realsense t265 odometry -->
+    <gazebo>
+      <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>30</updateRate>
+        <bodyName>link_t265_camera_odom</bodyName>
+        <topicName>/t265/odom/sample</topicName>
+        <gaussianNoise>0.001</gaussianNoise>
+        <frameName>odom</frameName>
+        <xyzOffsets>0 0 0</xyzOffsets>
+        <rpyOffsets>0 0 0</rpyOffsets>
+      </plugin>
+    </gazebo>
+
+    <!-- Ultrasonic rear-->
+    <gazebo reference="link_rear_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/rear</topicName>
+          <frameName>rear</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Ultrasonic side left-->
+    <gazebo reference="link_side_left_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/left</topicName>
+          <frameName>left</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Ultrasonic side right-->
+    <gazebo reference="link_side_right_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/right</topicName>
+          <frameName>right</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Ultrasonic front left-->
+    <gazebo reference="link_front_left_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/front_left</topicName>
+          <frameName>front_left</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+  <!-- Ultrasonic front right-->
+    <gazebo reference="link_front_right_sonar">
+      <sensor type="ray" name="sonar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>5</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>5</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.25</min_angle>
+              <max_angle>0.25</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.01</min>
+            <max>0.75</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <plugin filename="libgazebo_ros_range.so" name="gazebo_ros_range">
+          <gaussianNoise>0.005</gaussianNoise>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>5</updateRate>
+          <topicName>/ultrasound/front_right</topicName>
+          <frameName>front_right</frameName>
+          <fov>0.5</fov>
+          <radiation>ultrasound</radiation>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+    <!-- Differential drive -->
+    <gazebo>
+      <plugin name='differential_drive_controller' filename='libgazebo_ros_diff_drive.so'>
+        <alwaysOn>1</alwaysOn>
+        <updateRate>100</updateRate>
+        <leftJoint>joint_front_right_wheel</leftJoint>
+        <rightJoint>joint_front_left_wheel</rightJoint>
+        <wheelSeparation>0.36</wheelSeparation>
+        <wheelDiameter>0.17</wheelDiameter>
+        <wheelTorque>10</wheelTorque>
+        <commandTopic>/cmd_vel</commandTopic>
+        <odometryTopic>/diffdrive/odom/sample</odometryTopic>
+        <odometryFrame>odom</odometryFrame>
+        <publishOdomTF>true</publishOdomTF>
+        <robotBaseFrame>base_link</robotBaseFrame>
+        <robotNamespace>/</robotNamespace>
+      </plugin>
+    </gazebo>
+
+  </robot>

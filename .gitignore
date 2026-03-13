@@ -1,0 +1,20 @@
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# OS files
+.DS_Store
+*.swp
+*.tmp
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VSCode settings
+.vscode/
+
+# Optional: ignore other temporary files
+*.bak
+*.orig

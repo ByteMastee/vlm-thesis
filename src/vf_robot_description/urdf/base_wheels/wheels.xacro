@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="virofighter_wheels">
+
+  <!-- 1. Rear left wrist -->
+  <xacro:macro name="rear_left_wrist" params="name parent">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="${name}_visual">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_description/meshes/dae/rear_left_wrist.dae"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+    <joint name="joint_${name}" type="continuous">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="-0.47 0.16211 0.13" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <dynamics damping="0.005" friction="0.005"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- 2. Rear right wrist -->
+  <xacro:macro name="rear_right_wrist" params="name parent">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.1"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+      <visual name="${name}_visual">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_description/meshes/dae/rear_right_wrist.dae"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+    <joint name="joint_${name}" type="continuous">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="-0.47 -0.16211 0.13" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <dynamics damping="0.005" friction="0.005"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- 3. Wheel macro -->
+  <xacro:macro name="wheel" params="name parent xyz rpy radius length mass ixx iyy izz meshfile material">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${mass}"/>
+        <inertia ixx="${ixx}" ixy="0" ixz="0" iyy="${iyy}" iyz="0" izz="${izz}"/>
+      </inertial>
+      <visual name="${name}_visual">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${meshfile}" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="${material}"/>
+      </visual>
+      <collision name="${name}_collision">
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="${radius}" length="${length}"/>
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_${name}" type="continuous">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.005" friction="0.005"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- 4. Wheels assembly macro -->
+  <xacro:macro name="wheels" params="parent material='Black'">
+
+    <xacro:rear_left_wrist name="link_rear_left_wrist" parent="${parent}"/>
+    <xacro:rear_right_wrist name="link_rear_right_wrist" parent="${parent}"/>
+
+    <xacro:wheel
+      name="link_front_right_wheel"
+      parent="${parent}"
+      xyz="0 -0.17827 0.082"
+      rpy="0 0 0"
+      radius="0.08273"
+      length="0.04836"
+      mass="7.90271"
+      ixx="0.01506"
+      iyy="0.01506"
+      izz="0.02704"
+      meshfile="package://vf_robot_description/meshes/dae/front_right_wheel.dae"
+      material="${material}"/>
+
+    <xacro:wheel
+      name="link_front_left_wheel"
+      parent="${parent}"
+      xyz="0 0.17827 0.082"
+      rpy="0 0 0"
+      radius="0.08274"
+      length="0.04836"
+      mass="7.90462"
+      ixx="0.01507"
+      iyy="0.01507"
+      izz="0.02706"
+      meshfile="package://vf_robot_description/meshes/dae/front_left_wheel.dae"
+      material="${material}"/>
+
+    <xacro:wheel
+      name="link_rear_left_wheel"
+      parent="link_rear_left_wrist"
+      xyz="0.03802 0 -0.08"
+      rpy="0 0 0"
+      radius="0.05072"
+      length="0.03598"
+      mass="2.20995"
+      ixx="0.00166"
+      iyy="0.00166"
+      izz="0.00284"
+      meshfile="package://vf_robot_description/meshes/dae/rear_left_wheel.dae"
+      material="${material}"/>
+
+    <xacro:wheel
+      name="link_rear_right_wheel"
+      parent="link_rear_right_wrist"
+      xyz="0.03802 0 -0.08"
+      rpy="0 0 0"
+      radius="0.05074"
+      length="0.036"
+      mass="2.21293"
+      ixx="0.00166"
+      iyy="0.00166"
+      izz="0.00285"
+      meshfile="package://vf_robot_description/meshes/dae/rear_right_wheel.dae"
+      material="${material}"/>
+
+  </xacro:macro>
+
+</robot>

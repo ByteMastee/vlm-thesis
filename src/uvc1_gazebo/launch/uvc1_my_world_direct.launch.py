@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+#
+# Copyright  EUROKNOWS CO., LTD.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Authors: Pravin Oli
+# https://www.euroknows.com/en/home/
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, Command
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    # Directories
+    pkg_gazebo_ros = get_package_share_directory("gazebo_ros")
+    pkg_uvc1 = get_package_share_directory("uvc1_gazebo")
+    launch_dir = os.path.join(pkg_uvc1, "launch")
+    urdf_file = os.path.join(pkg_uvc1, "urdf", "uvc1_virofighter.urdf")
+
+    # Launch configurations
+    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
+    x_pose = LaunchConfiguration("x_pose", default="9.0")
+    y_pose = LaunchConfiguration("y_pose", default="0.5")
+    z_pose = LaunchConfiguration("z_pose", default="3.14")
+
+    # World file
+    world_file = os.path.join(pkg_uvc1, "worlds", "my_world.world")
+
+    # Start Gazebo server
+    gzserver_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_gazebo_ros, "launch", "gzserver.launch.py")
+        ),
+        launch_arguments={"world": world_file}.items(),
+    )
+
+    # Start Gazebo client
+    gzclient_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_gazebo_ros, "launch", "gzclient.launch.py")
+        )
+    )
+
+    # Publish robot_state using URDF
+    robot_state_publisher_cmd = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="screen",
+        parameters=[
+            {
+                "use_sim_time": use_sim_time,
+                "robot_description": Command(
+                    ["xacro ", urdf_file, " use_sim_time:=", use_sim_time]
+                ),
+            }
+        ],
+    )
+
+    # Spawn robot from URDF (Gazebo reads all <gazebo> tags inside links)
+    spawn_robot_cmd = Node(
+        package="gazebo_ros",
+        executable="spawn_entity.py",
+        arguments=[
+            "-entity",
+            "uvc1_virofighter",
+            "-x",
+            x_pose,
+            "-y",
+            y_pose,
+            "-z",
+            "0.1",  # Spawn 10cm above ground so it drops safely
+            "-Y",
+            z_pose,  # Use 3.14 value here for the YAW orientation
+            "-topic",
+            "robot_description",
+        ],
+        output="screen",
+    )
+
+    # RViz configuration
+    rviz_config = os.path.join(
+        get_package_share_directory("uvc1_gazebo"),
+        "rviz",
+        "nav2_gazebo.rviz",
+    )
+
+    # GUI Teleop Node
+    gui_teleop_node = Node(
+        package="rqt_robot_steering",
+        executable="rqt_robot_steering",
+        name="rqt_robot_steering",
+        output="screen",
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+
+    # Node 1: D455 (Main Navigation Scan)
+    d455_scan_node = Node(
+        package="depthimage_to_laserscan",
+        executable="depthimage_to_laserscan_node",
+        name="d455_scan",
+        remappings=[
+            ("depth", "/d455/depth/d455_depth/depth/image_raw"),
+            ("depth_camera_info", "/d455/depth/d455_depth/depth/camera_info"),
+            ("scan", "/scan_d455"),
+        ],
+        parameters=[
+            {
+                "use_sim_time": True,
+                # Use the camera's OWN frame. Let robot_state_publisher handle the 180 flip.
+                "output_frame": "camera_d455_depth_optical_frame",
+                "range_min": 0.5,
+                "range_max": 10.0,
+                "scan_height": 5,
+            }
+        ],
+    )
+
+    # Node 2: D435i (Secondary Scan - Tilted)
+    # Publishing to a different topic so it doesn't interfere with Nav2 for now.
+    d435i_scan_node = Node(
+        package="depthimage_to_laserscan",
+        executable="depthimage_to_laserscan_node",
+        name="d435i_scan",
+        remappings=[
+            ("depth", "/d435i/depth/d435i_depth/depth/image_raw"),
+            ("depth_camera_info", "/d435i/depth/d435i_depth/depth/camera_info"),
+            ("scan", "/scan"),  # Separate topic
+        ],
+        parameters=[
+            {
+                "use_sim_time": True,
+                "output_frame": "base_link",  # This corrects the 60-degree tilt
+                "range_min": 1.8,  # Large offset to avoid seeing the robot
+                "range_max": 8.0,
+                "scan_height": 1,
+                "reliability_policy": 1,
+            }
+        ],
+    )
+
+    # rviz node
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="screen",
+        arguments=["-d", rviz_config],
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+
+    # LaunchDescription
+    ld = LaunchDescription()
+
+    ld.add_action(gzserver_cmd)
+    ld.add_action(gzclient_cmd)
+    ld.add_action(robot_state_publisher_cmd)
+    ld.add_action(spawn_robot_cmd)
+    ld.add_action(gui_teleop_node)  # teleop
+    ld.add_action(d455_scan_node)  # Add depthimage_to_laserscan node
+    ld.add_action(d435i_scan_node)  # Add second depthimage_to_laserscan node
+    ld.add_action(rviz_node)  # Add rviz node
+
+    return ld

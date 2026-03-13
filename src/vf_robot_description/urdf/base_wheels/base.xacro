@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="base" params="name">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="10.011"/>
+        <inertia ixx="13.2077" ixy="0" ixz="0"
+                 iyy="13.3744" iyz="0" izz="0.34275"/>
+      </inertial>
+      <visual name="virofighter_visual">
+        <origin xyz="-0.25 0 0.049" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_description/meshes/dae/virofighter.dae" scale="1 1 1"/>
+        </geometry>
+      </visual>
+      <collision name="virofighter_collision">
+        <origin xyz="-0.22008 0.00079 1.00857" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://vf_robot_description/meshes/dae/Cube.019.dae" scale="1 1 1"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+</robot>
+

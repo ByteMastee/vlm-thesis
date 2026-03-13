@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="virofighter_sonars">
+
+  <!-- Macro to instantiate multiple sonars -->
+  <xacro:macro name="sonars" params="parent material='Grey'">
+
+    <!-- Front Right Sonar -->
+    <xacro:sonar name="link_front_right_sonar" parent="${parent}"
+                 xyz="0.08 -0.1293 0.2115" rpy="0 0 0"
+                 max_range="0.75" min_angle="-0.25" max_angle="0.25" material="${material}"/>
+
+    <!-- Front Left Sonar -->
+    <xacro:sonar name="link_front_left_sonar" parent="${parent}"
+                 xyz="0.08 0.1337 0.21166" rpy="0 0 0"
+                 max_range="0.75" min_angle="-0.25" max_angle="0.25" material="${material}"/>
+
+    <!-- Side Right Sonar -->
+    <xacro:sonar name="link_side_right_sonar" parent="${parent}"
+                 xyz="-0.34701 -0.215 0.21154" rpy="0 0 -1.5708"
+                 max_range="0.75" min_angle="-0.25" max_angle="0.25" material="${material}"/>
+
+    <!-- Side Left Sonar -->
+    <xacro:sonar name="link_side_left_sonar" parent="${parent}"
+                 xyz="-0.34701 0.215 0.21154" rpy="0 0 1.5708"
+                 max_range="0.75" min_angle="-0.25" max_angle="0.25" material="${material}"/>
+
+    <!-- Rear Sonar -->
+    <xacro:sonar name="link_rear_sonar" parent="${parent}"
+                 xyz="-0.54 0.01302 0.33103" rpy="0 0 3.14159"
+                 max_range="0.75" min_angle="-0.25" max_angle="0.25" material="${material}"/>
+
+  </xacro:macro>
+
+  <!-- Macro for a single sonar -->
+  <xacro:macro name="sonar" params="name parent xyz rpy max_range min_angle max_angle material='Grey'">
+
+    <link name="${name}">
+      <collision name="${name}_collision">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.02" length="0.05"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint_${name}" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

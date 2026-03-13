@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- =====================================================
+       Differential Drive Plugin for Gazebo
+       - Only front wheels are powered
+       - Rear wheels are passive casters (free-rotating)
+       - Assumes base link is ${base_link}
+  ===================================================== -->
+
+  <xacro:macro name="differential_drive" params="left_wheel right_wheel wheel_separation wheel_radius base_link">
+
+    <!-- Gazebo differential drive plugin -->
+    <gazebo>
+      <plugin name="diff_drive_controller" filename="libgazebo_ros_diff_drive.so">
+        <!-- Base link -->
+        <robotBase>${base_link}</robotBase>
+
+        <!-- Wheel joints -->
+        <leftJoint>${left_wheel}</leftJoint>
+        <rightJoint>${right_wheel}</rightJoint>
+
+        <!-- Wheel parameters -->
+        <wheelSeparation>${wheel_separation}</wheelSeparation>
+        <wheelRadius>${wheel_radius}</wheelRadius>
+
+        <!-- Publish odometry -->
+        <publishWheelTF>true</publishWheelTF>
+        <odomTopic>/odom</odomTopic>
+        <odometryFrame>odom</odometryFrame>
+
+        <!-- Command interface -->
+        <commandTopic>/cmd_vel</commandTopic>
+        <odometrySource>ENCODER</odometrySource>
+
+        <!-- Torque/velocity limits -->
+        <maxTorque>5.0</maxTorque>
+        <updateRate>50.0</updateRate>
+
+        <!-- Rear wheels are free-rotating and passive -->
+      </plugin>
+    </gazebo>
+
+  </xacro:macro>
+
+</robot>
