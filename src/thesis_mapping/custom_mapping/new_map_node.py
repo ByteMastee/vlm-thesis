@@ -34,7 +34,7 @@ class NewMapNode(Node):
         self.max_valid_depth = 8.0
 
         # Top-camera world-height filter
-        self.min_obstacle_height = 0.05
+        self.min_obstacle_height = 0.10
         self.max_obstacle_height = 1.50
 
         self.u_step = 15
@@ -203,19 +203,31 @@ class NewMapNode(Node):
                 point_odom = do_transform_point(point_camera, camera_tf)
 
                 z_world = point_odom.point.z
-                if z_world < self.min_obstacle_height or z_world > self.max_obstacle_height:
-                    continue
 
                 hit_cell = self.world_to_grid(point_odom.point.x, point_odom.point.y)
                 if hit_cell is None:
                     continue
 
-                valid_hits += 1
-
                 ray_cells = self.bresenham(
                     robot_cell[0], robot_cell[1],
                     hit_cell[0], hit_cell[1]
                 )
+
+                # Case 1: floor / navigable surface -> free only
+                if z_world < self.min_obstacle_height:
+                    for free_cell in ray_cells:
+                        fxg, fyg = free_cell
+                        if self.grid[fyg, fxg] == -1:
+                            self.grid[fyg, fxg] = 0
+                            free_updates += 1
+                    continue
+
+                # Case 2: too high -> ignore
+                if z_world > self.max_obstacle_height:
+                    continue
+
+                # Case 3: obstacle band -> free ray + occupied endpoint
+                valid_hits += 1
 
                 for free_cell in ray_cells[:-1]:
                     fxg, fyg = free_cell
