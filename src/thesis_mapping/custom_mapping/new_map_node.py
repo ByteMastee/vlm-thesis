@@ -9,28 +9,36 @@ import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import Image, CameraInfo
-from nav_msgs.msg import OccupancyGrid, Odometry
+from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PointStamped
 from tf2_ros import Buffer, TransformListener, TransformException
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
 
 
-class MappingNode(Node):
+class NewMapNode(Node):
     def __init__(self):
-        super().__init__('mapping_node')
+        super().__init__('new_map_node')
 
         self.latest_camera_info = None
-        self.latest_robot_x = None
-        self.latest_robot_y = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.map_resolution = 0.1
+        self.map_resolution = 0.10
         self.map_width = 600
         self.map_height = 600
         self.map_origin_x = -30.0
         self.map_origin_y = -30.0
+
+        self.min_valid_depth = 0.2
+        self.max_valid_depth = 8.0
+
+        # Top-camera world-height filter
+        self.min_obstacle_height = 0.05
+        self.max_obstacle_height = 1.50
+
+        self.u_step = 15
+        self.v_step = 15
 
         self.grid = np.full((self.map_height, self.map_width), -1, dtype=np.int8)
 
@@ -40,7 +48,6 @@ class MappingNode(Node):
             10
         )
 
-        # TOP CAMERA: d435i
         self.info_sub = self.create_subscription(
             CameraInfo,
             '/d435i/depth/d435i_depth/camera_info',
@@ -55,21 +62,10 @@ class MappingNode(Node):
             10
         )
 
-        self.odom_sub = self.create_subscription(
-            Odometry,
-            '/odom',
-            self.odom_callback,
-            10
-        )
-
-        self.get_logger().info('2D grid mapping node with top camera started.')
+        self.get_logger().info('ne_map_node started with TF-based robot pose and top camera.')
 
     def info_callback(self, msg: CameraInfo):
         self.latest_camera_info = msg
-
-    def odom_callback(self, msg: Odometry):
-        self.latest_robot_x = msg.pose.pose.position.x
-        self.latest_robot_y = msg.pose.pose.position.y
 
     def world_to_grid(self, x, y):
         gx = int((x - self.map_origin_x) / self.map_resolution)
@@ -122,32 +118,48 @@ class MappingNode(Node):
         msg.data = self.grid.flatten().tolist()
         self.map_pub.publish(msg)
 
+    def get_robot_cell_from_tf(self):
+        try:
+            base_tf = self.tf_buffer.lookup_transform(
+                'odom',
+                'base_link',
+                rclpy.time.Time()
+            )
+        except TransformException as ex:
+            self.get_logger().warn(f'Robot TF lookup failed (odom <- base_link): {ex}')
+            return None
+
+        robot_x = base_tf.transform.translation.x
+        robot_y = base_tf.transform.translation.y
+
+        robot_cell = self.world_to_grid(robot_x, robot_y)
+        if robot_cell is None:
+            self.get_logger().warn('Robot position is outside map bounds.')
+            return None
+
+        return robot_cell
+
     def depth_callback(self, msg: Image):
         if self.latest_camera_info is None:
             self.get_logger().warn('CameraInfo not received yet.')
-            return
-
-        if self.latest_robot_x is None or self.latest_robot_y is None:
-            self.get_logger().warn('Odometry not received yet.')
             return
 
         if msg.encoding != '32FC1':
             self.get_logger().warn(f'Unsupported depth encoding: {msg.encoding}')
             return
 
+        robot_cell = self.get_robot_cell_from_tf()
+        if robot_cell is None:
+            return
+
         try:
-            transform = self.tf_buffer.lookup_transform(
+            camera_tf = self.tf_buffer.lookup_transform(
                 'odom',
                 msg.header.frame_id,
                 rclpy.time.Time()
             )
         except TransformException as ex:
-            self.get_logger().warn(f'TF lookup failed: {ex}')
-            return
-
-        robot_cell = self.world_to_grid(self.latest_robot_x, self.latest_robot_y)
-        if robot_cell is None:
-            self.get_logger().warn('Robot position is outside map bounds.')
+            self.get_logger().warn(f'Camera TF lookup failed (odom <- {msg.header.frame_id}): {ex}')
             return
 
         fx = self.latest_camera_info.k[0]
@@ -160,12 +172,10 @@ class MappingNode(Node):
 
         occupied_updates = 0
         free_updates = 0
+        valid_hits = 0
 
-        u_step = 15
-        v_step = 15
-
-        for v in range(0, height, v_step):
-            for u in range(0, width, u_step):
+        for v in range(0, height, self.v_step):
+            for u in range(0, width, self.u_step):
                 byte_index = v * msg.step + u * 4
 
                 if byte_index + 4 > len(msg.data):
@@ -173,7 +183,11 @@ class MappingNode(Node):
 
                 depth = struct.unpack_from('<f', msg.data, byte_index)[0]
 
-                if not math.isfinite(depth) or depth <= 0.0 or depth > 10.0:
+                if (
+                    not math.isfinite(depth)
+                    or depth < self.min_valid_depth
+                    or depth > self.max_valid_depth
+                ):
                     continue
 
                 x_cam = (u - cx) * depth / fx
@@ -186,15 +200,17 @@ class MappingNode(Node):
                 point_camera.point.y = y_cam
                 point_camera.point.z = z_cam
 
-                point_odom = do_transform_point(point_camera, transform)
+                point_odom = do_transform_point(point_camera, camera_tf)
 
-                # keep only points above floor
-                if point_odom.point.z < 0.2:
+                z_world = point_odom.point.z
+                if z_world < self.min_obstacle_height or z_world > self.max_obstacle_height:
                     continue
 
                 hit_cell = self.world_to_grid(point_odom.point.x, point_odom.point.y)
                 if hit_cell is None:
                     continue
+
+                valid_hits += 1
 
                 ray_cells = self.bresenham(
                     robot_cell[0], robot_cell[1],
@@ -203,7 +219,7 @@ class MappingNode(Node):
 
                 for free_cell in ray_cells[:-1]:
                     fxg, fyg = free_cell
-                    if self.grid[fyg, fxg] != 0:
+                    if self.grid[fyg, fxg] == -1:
                         self.grid[fyg, fxg] = 0
                         free_updates += 1
 
@@ -214,13 +230,13 @@ class MappingNode(Node):
 
         self.publish_map(msg.header.stamp)
         self.get_logger().info(
-            f'Frame updates -> free: {free_updates}, occupied: {occupied_updates}'
+            f'Frame updates -> valid_hits: {valid_hits}, free: {free_updates}, occupied: {occupied_updates}'
         )
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MappingNode()
+    node = NewMapNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
