@@ -27,7 +27,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'mapping_node = thesis_mapping.mapping_node:main',
+            'mapping_node = custom_mapping.mapping_node:main',
+            'new_map_node = custom_mapping.new_map_node:main',
         ],
     },
 )

@@ -9,8 +9,7 @@ import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import Image, CameraInfo
-# from nav_msgs.msg import OccupancyGrid, Odometry
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PointStamped
 from tf2_ros import Buffer, TransformListener, TransformException
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
@@ -21,8 +20,8 @@ class MappingNode(Node):
         super().__init__('mapping_node')
 
         self.latest_camera_info = None
-        # self.latest_robot_x = None
-        # self.latest_robot_y = None
+        self.latest_robot_x = None
+        self.latest_robot_y = None
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -35,37 +34,42 @@ class MappingNode(Node):
 
         self.grid = np.full((self.map_height, self.map_width), -1, dtype=np.int8)
 
-        self.map_pub = self.create_publisher(OccupancyGrid, '/thesis_mapping/grid_map', 10)
+        self.map_pub = self.create_publisher(
+            OccupancyGrid,
+            '/thesis_mapping/grid_map',
+            10
+        )
 
+        # TOP CAMERA: d435i
         self.info_sub = self.create_subscription(
             CameraInfo,
-            '/d455/depth/d455_depth/camera_info',
+            '/d435i/depth/d435i_depth/camera_info',
             self.info_callback,
             10
         )
 
         self.depth_sub = self.create_subscription(
             Image,
-            '/d455/depth/d455_depth/depth/image_raw',
+            '/d435i/depth/d435i_depth/depth/image_raw',
             self.depth_callback,
             10
         )
 
-        # self.odom_sub = self.create_subscription(
-        #     Odometry,
-        #     '/odom',
-        #     self.odom_callback,
-        #     10
-        # )
+        self.odom_sub = self.create_subscription(
+            Odometry,
+            '/odom',
+            self.odom_callback,
+            10
+        )
 
-        self.get_logger().info('2D grid mapping node with free-space carving started.')
+        self.get_logger().info('2D grid mapping node with top camera started.')
 
     def info_callback(self, msg: CameraInfo):
         self.latest_camera_info = msg
 
-    # def odom_callback(self, msg: Odometry):
-    #     self.latest_robot_x = msg.pose.pose.position.x
-    #     self.latest_robot_y = msg.pose.pose.position.y
+    def odom_callback(self, msg: Odometry):
+        self.latest_robot_x = msg.pose.pose.position.x
+        self.latest_robot_y = msg.pose.pose.position.y
 
     def world_to_grid(self, x, y):
         gx = int((x - self.map_origin_x) / self.map_resolution)
@@ -123,9 +127,9 @@ class MappingNode(Node):
             self.get_logger().warn('CameraInfo not received yet.')
             return
 
-        # if self.latest_robot_x is None or self.latest_robot_y is None:
-        #     self.get_logger().warn('Odometry not received yet.')
-        #     return
+        if self.latest_robot_x is None or self.latest_robot_y is None:
+            self.get_logger().warn('Odometry not received yet.')
+            return
 
         if msg.encoding != '32FC1':
             self.get_logger().warn(f'Unsupported depth encoding: {msg.encoding}')
@@ -141,12 +145,9 @@ class MappingNode(Node):
             self.get_logger().warn(f'TF lookup failed: {ex}')
             return
 
-        sensor_x = transform.transform.translation.x
-        sensor_y = transform.transform.translation.y
-
-        robot_cell = self.world_to_grid(sensor_x, sensor_y)
+        robot_cell = self.world_to_grid(self.latest_robot_x, self.latest_robot_y)
         if robot_cell is None:
-            self.get_logger().warn('Sensor origin is outside map bounds.')
+            self.get_logger().warn('Robot position is outside map bounds.')
             return
 
         fx = self.latest_camera_info.k[0]
@@ -160,8 +161,8 @@ class MappingNode(Node):
         occupied_updates = 0
         free_updates = 0
 
-        u_step = 12
-        v_step = 12
+        u_step = 15
+        v_step = 15
 
         for v in range(0, height, v_step):
             for u in range(0, width, u_step):
@@ -187,6 +188,7 @@ class MappingNode(Node):
 
                 point_odom = do_transform_point(point_camera, transform)
 
+                # keep only points above floor
                 if point_odom.point.z < 0.2:
                     continue
 
