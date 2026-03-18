@@ -29,6 +29,8 @@ setup(
         'console_scripts': [
             'mapping_node = custom_mapping.mapping_node:main',
             'new_map_node = custom_mapping.new_map_node:main',
+            'map_saver_node = custom_mapping.map_saver_node:main',
+            'semantic_gt_node = custom_mapping.semantic_gt_node:main',
         ],
     },
 )

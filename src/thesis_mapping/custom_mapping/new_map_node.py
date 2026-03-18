@@ -25,8 +25,8 @@ class NewMapNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.map_resolution = 0.10
-        self.map_width = 600
-        self.map_height = 600
+        self.map_width = 1200
+        self.map_height = 1200
         self.map_origin_x = -30.0
         self.map_origin_y = -30.0
 
