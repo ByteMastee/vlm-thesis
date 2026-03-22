@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'frame_processing_node = thesis_pp_develop.frames_process:main',
+            'ray_visualizing_node = thesis_pp_develop.ray_visualizer:main',
         ],
     },
 )
