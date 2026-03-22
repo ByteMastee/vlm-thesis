@@ -6,7 +6,7 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 import rosbag2_py
 
-BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag2'
+BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag3'
 IMAGE_TOPIC = '/fisheye/front/fisheye_front/image_raw'
 ODOM_TOPIC = '/odom'
 
@@ -72,7 +72,7 @@ while reader.has_next():
 
     cv2.imshow('Frame Inspector', img)
 
-    key = cv2.waitKey(550)
+    key = cv2.waitKey(50)
     if key == ord('q'):
         break
 

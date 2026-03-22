@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 
+import os
+import json
 import cv2
 import numpy as np
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 import rosbag2_py
+from ultralytics import YOLO
 
 BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag3'
 IMAGE_TOPIC = '/fisheye/front/fisheye_front/image_raw'
-ODOM_TOPIC = '/odom'
+OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/yolo_detections'
+FRAME_SKIP = 12
+CONFIDENCE = 0.45
+MODEL = '/root/yolo26m.pt'
 
-FRAME_SKIP = 20  # change this value to test different skip rates
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+model = YOLO(MODEL)
 
 storage_options = rosbag2_py.StorageOptions(uri=BAG_PATH, storage_id='sqlite3')
 converter_options = rosbag2_py.ConverterOptions(
@@ -24,28 +32,22 @@ reader.open(storage_options, converter_options)
 topic_types = reader.get_all_topics_and_types()
 type_map = {t.name: t.type for t in topic_types}
 
-filter = rosbag2_py.StorageFilter(topics=[IMAGE_TOPIC, ODOM_TOPIC])
-reader.set_filter(filter)
+storage_filter = rosbag2_py.StorageFilter(topics=[IMAGE_TOPIC])
+reader.set_filter(storage_filter)
 
-image_msg_type = get_message(type_map[IMAGE_TOPIC])
-odom_msg_type = get_message(type_map[ODOM_TOPIC])
+msg_type = get_message(type_map[IMAGE_TOPIC])
 
 frame_count = 0
-latest_odom = None
+all_detections = []
 
 while reader.has_next():
     topic, data, timestamp = reader.read_next()
 
-    if topic == ODOM_TOPIC:
-        latest_odom = deserialize_message(data, odom_msg_type)
-        continue
-
     if topic != IMAGE_TOPIC:
         continue
 
-    msg = deserialize_message(data, image_msg_type)
-
     if frame_count % FRAME_SKIP == 0:
+        msg = deserialize_message(data, msg_type)
         img_array = np.frombuffer(bytes(msg.data), dtype=np.uint8)
 
         if msg.encoding == 'rgb8':
@@ -61,26 +63,34 @@ while reader.has_next():
             frame_count += 1
             continue
 
-        cv2.putText(img, f'Frame: {frame_count}', (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        results = model(img, conf=CONFIDENCE, verbose=False)
 
-        if latest_odom is not None:
-            x = latest_odom.pose.pose.position.x
-            y = latest_odom.pose.pose.position.y
-            cv2.putText(img, f'Odom x: {x:.3f}  y: {y:.3f}', (10, 65),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        else:
-            cv2.putText(img, 'Odom: N/A', (10, 65),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        #frame_detections = []
 
-        cv2.imshow('Frame Skip Inspector', img)
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cls_id = int(box.cls[0])
+                label = model.names[cls_id]
 
-        key = cv2.waitKey(730)
-        if key == ord('q'):
-            break
+                cx = (x1 + x2) // 2
+                cy = (y1 + y2) // 2
+
+                detection = {
+                    'label': label,
+                    'centroid_px': [cx, cy]
+                }
+
+                all_detections.append(detection)
+
+        #print(f'Frame {frame_count}: {len(frame_detections)} detections')
 
     frame_count += 1
 
-cv2.destroyAllWindows()
-print(f'Total frames in bag: {frame_count}')
-print(f'Frames viewed (every {FRAME_SKIP}): {frame_count // FRAME_SKIP}')
+# Save as JSON
+json_path = os.path.join(OUTPUT_DIR, 'detections3.json')
+with open(json_path, 'w') as f:
+    json.dump(all_detections, f, indent=2)
+
+print(f'\nTotal detections processed: {len(all_detections)}')
+print(f'Saved detections to: {json_path}')

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import json
 import cv2
 import numpy as np
 from rclpy.serialization import deserialize_message
@@ -10,10 +11,10 @@ from ultralytics import YOLO
 
 BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag3'
 IMAGE_TOPIC = '/fisheye/front/fisheye_front/image_raw'
+OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/yolo_detections'
 FRAME_SKIP = 12
 CONFIDENCE = 0.45
 MODEL = '/root/yolo26m.pt'
-OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/yolo_frames2'
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -37,6 +38,7 @@ reader.set_filter(storage_filter)
 msg_type = get_message(type_map[IMAGE_TOPIC])
 
 frame_count = 0
+all_detections = []
 
 while reader.has_next():
     topic, data, timestamp = reader.read_next()
@@ -47,9 +49,6 @@ while reader.has_next():
     if frame_count % FRAME_SKIP == 0:
         msg = deserialize_message(data, msg_type)
         img_array = np.frombuffer(bytes(msg.data), dtype=np.uint8)
-
-        #Just for debugging, print encoding and dimensions
-        #print(f'Encoding: {msg.encoding}, Shape: {msg.height}x{msg.width}')
 
         if msg.encoding == 'rgb8':
             img = img_array.reshape((msg.height, msg.width, 3))
@@ -66,9 +65,7 @@ while reader.has_next():
 
         results = model(img, conf=CONFIDENCE, verbose=False)
 
-        #Just for debugging, print number of detections in this frame
-        # total_detections = sum(len(r.boxes) for r in results)
-        # print(f'Frame {frame_count}: {total_detections} detections')
+        frame_detections = []
 
         for result in results:
             for box in result.boxes:
@@ -80,32 +77,31 @@ while reader.has_next():
                 cx = (x1 + x2) // 2
                 cy = (y1 + y2) // 2
 
-                # Bounding box
-                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                detection = {
+                    'label': label,
+                    'confidence': round(conf, 3),
+                    'centroid_px': [cx, cy],
+                    'bbox': [x1, y1, x2, y2]
+                }
 
-                # Centroid
-                cv2.circle(img, (cx, cy), 5, (0, 0, 255), -1)
+                frame_detections.append(detection)
 
-                # Label and confidence
-                cv2.putText(img, f'{label} {conf:.2f}', (x1, y1 - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        frame_entry = {
+            'frame': frame_count,
+            'timestamp': timestamp,
+            'detections': frame_detections
+        }
 
-                # Centroid coordinates
-                cv2.putText(img, f'({cx},{cy})', (cx + 6, cy),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        all_detections.append(frame_entry)
 
-        cv2.putText(img, f'Frame: {frame_count}', (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
-
-        cv2.imshow('YOLO Frame Test', img)
-
-        cv2.imwrite(os.path.join(OUTPUT_DIR, f'frame_{frame_count:05d}.png'), img)
-
-        key = cv2.waitKey(450)
-        if key == ord('q'):
-            break
+        print(f'Frame {frame_count}: {len(frame_detections)} detections')
 
     frame_count += 1
 
-cv2.destroyAllWindows()
-print(f'Total frames: {frame_count}')
+# Save as JSON
+json_path = os.path.join(OUTPUT_DIR, 'detections2.json')
+with open(json_path, 'w') as f:
+    json.dump(all_detections, f, indent=2)
+
+print(f'\nTotal frames processed: {len(all_detections)}')
+print(f'Saved detections to: {json_path}')
