@@ -35,15 +35,7 @@ while reader.has_next():
     msg = deserialize_message(data, msg_type)
 
     for tf in msg.transforms:
-        if tf.child_frame_id == SOURCE_FRAME and tf.header.frame_id == TARGET_FRAME:
-            transform_found = tf
-            break
-        if tf.child_frame_id == TARGET_FRAME and tf.header.frame_id == SOURCE_FRAME:
-            transform_found = tf
-            break
-
-    if transform_found:
-        break
+        print(f'{tf.header.frame_id}  -->  {tf.child_frame_id}')
 
 if transform_found is None:
     print(f'Transform not found between {SOURCE_FRAME} and {TARGET_FRAME}')
