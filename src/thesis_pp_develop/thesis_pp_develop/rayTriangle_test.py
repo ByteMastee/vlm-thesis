@@ -7,6 +7,7 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 import rosbag2_py
 from ultralytics import YOLO
+from sklearn.cluster import DBSCAN
 
 BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag3'
 IMAGE_TOPIC = '/fisheye/front/fisheye_front/image_raw'
@@ -15,7 +16,7 @@ FRAME_SKIP = 12
 CONFIDENCE = 0.45
 MODEL_PATH = '/root/yolo26m.pt'
 MIN_ANGLE_DEG = 5.0
-OUTPUT_PATH = '/root/UVC_ws/vf_robot_model_ros2/step7_detections/object_stack.json'
+OUTPUT_PATH = '/root/UVC_ws/vf_robot_model_ros2/step7_detections/object_stack_sample.json'
 
 # Camera intrinsics
 FX = 28.00600204423685
@@ -198,44 +199,55 @@ while reader.has_next():
 print(f'\nTotal pairs triangulated: {total_pairs_triangulated}')
 print(f'Total pairs skipped (angle < {MIN_ANGLE_DEG}deg): {total_pairs_skipped}')
 
-# Filter outliers using median and IQR per label
+# DBSCAN parameters
+DBSCAN_EPS = 1.0        # max distance between points in same cluster (meters)
+DBSCAN_MIN_SAMPLES = 3  # minimum points to form a cluster
+
 object_stack = {}
 
-print('\n--- Object Stack (after outlier filtering) ---')
+print('\n--- Object Stack (after DBSCAN clustering) ---')
 for label, candidates in candidate_stack.items():
     if len(candidates) == 0:
         continue
 
     pts = np.array(candidates)
 
-    if len(pts) == 1:
-        object_stack[label] = {'x': round(float(pts[0][0]), 4),
-                                'y': round(float(pts[0][1]), 4),
-                                'num_candidates': 1}
+    if len(pts) < DBSCAN_MIN_SAMPLES:
+        print(f'{label}: not enough candidates ({len(pts)}) for clustering — skipped')
         continue
 
-    # IQR filter per axis
-    for axis in range(2):
-        q1 = np.percentile(pts[:, axis], 25)
-        q3 = np.percentile(pts[:, axis], 75)
-        iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-        pts = pts[(pts[:, axis] >= lower) & (pts[:, axis] <= upper)]
+    db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(pts)
+    labels_db = db.labels_
 
-    if len(pts) == 0:
+    unique_clusters = set(labels_db)
+    unique_clusters.discard(-1)  # remove noise label
+
+    if len(unique_clusters) == 0:
+        print(f'{label}: all points marked as noise — skipped')
         continue
 
-    final_x = float(np.median(pts[:, 0]))
-    final_y = float(np.median(pts[:, 1]))
+    for cluster_id in sorted(unique_clusters):
+        cluster_pts = pts[labels_db == cluster_id]
+        final_x = float(np.median(cluster_pts[:, 0]))
+        final_y = float(np.median(cluster_pts[:, 1]))
 
-    object_stack[label] = {
-        'x': round(final_x, 4),
-        'y': round(final_y, 4),
-        'num_candidates': len(pts)
-    }
+        if len(unique_clusters) == 1:
+            instance_label = label
+        else:
+            instance_label = f'{label}_{cluster_id + 1}'
 
-    print(f'{label}: ({final_x:.4f}, {final_y:.4f}) from {len(pts)} candidates')
+        object_stack[instance_label] = {
+            'x': round(final_x, 4),
+            'y': round(final_y, 4),
+            'num_candidates': len(cluster_pts)
+        }
+
+        print(f'{instance_label}: ({final_x:.4f}, {final_y:.4f}) '
+              f'from {len(cluster_pts)} candidates')
+
+    noise_count = np.sum(labels_db == -1)
+    if noise_count > 0:
+        print(f'  [{label}] noise points discarded: {noise_count}')
 
 # Save
 import os
@@ -244,3 +256,23 @@ with open(OUTPUT_PATH, 'w') as f:
     json.dump(object_stack, f, indent=2)
 
 print(f'\nObject stack saved to: {OUTPUT_PATH}')
+
+
+#Only if ray stack is needed, use the folowing code:
+
+# Save ray stack
+ray_stack_serializable = {}
+for label, rays in ray_stack.items():
+    ray_stack_serializable[label] = [
+        {
+            'origin': [round(float(o[0]), 4), round(float(o[1]), 4), round(float(o[2]), 4)],
+            'direction': [round(float(d[0]), 4), round(float(d[1]), 4), round(float(d[2]), 4)]
+        }
+        for o, d in rays
+    ]
+
+ray_stack_path = os.path.join(os.path.dirname(OUTPUT_PATH), 'ray_stack.json')
+with open(ray_stack_path, 'w') as f:
+    json.dump(ray_stack_serializable, f, indent=2)
+
+print(f'Ray stack saved to: {ray_stack_path}')
