@@ -5,7 +5,7 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 import rosbag2_py
 
-BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag3'
+BAG_PATH = '/root/UVC_ws/vf_robot_model_ros2/thesis_fisheye_bag4'
 CAMERA_INFO_TOPIC = '/fisheye/front/fisheye_front/camera_info'
 
 storage_options = rosbag2_py.StorageOptions(uri=BAG_PATH, storage_id='sqlite3')
