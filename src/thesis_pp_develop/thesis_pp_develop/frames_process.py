@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 
 import os
+import time
 import json
 import cv2
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 from sklearn.cluster import DBSCAN
 
 import rclpy
@@ -36,6 +41,14 @@ MIN_ANGLE_DEG = 5.0
 # DBSCAN parameters
 DBSCAN_EPS = 1.0
 DBSCAN_MIN_SAMPLES = 3
+
+# Ground truth from Gazebo world file
+GROUND_TRUTH = {
+    'chair_1': (-3.0,  2.0),
+    'chair_2': (-3.5, -2.5),
+    'couch':   ( 3.5,  0.0),
+    'table':   ( 2.0,  2.5)
+}
 
 
 def pixel_to_ray_odom(cx, cy, robot_x, robot_y, yaw):
@@ -144,6 +157,60 @@ def cluster_candidates(candidates, label):
     return object_entries
 
 
+def save_map_plot(object_stack, output_dir):
+    plt.figure(figsize=(10, 10))
+
+    # Plot ground truth
+    for label, (gx, gy) in GROUND_TRUTH.items():
+        plt.plot(gx, gy, 'g^', markersize=12)
+        plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
+                     textcoords='offset points', xytext=(8, 8),
+                     fontsize=9, color='green')
+
+    # Plot detected object stack
+    colors = ['red', 'orange', 'purple', 'cyan', 'magenta']
+    for i, (label, data) in enumerate(object_stack.items()):
+        ox = data['x']
+        oy = data['y']
+        color = colors[i % len(colors)]
+        plt.plot(ox, oy, '*', markersize=15, color=color)
+        plt.annotate(f'Det: {label}\n({ox:.2f},{oy:.2f})', (ox, oy),
+                     textcoords='offset points', xytext=(8, -18),
+                     fontsize=9, color=color)
+
+        # Draw error line to nearest GT
+        best_dist = float('inf')
+        best_gx, best_gy = None, None
+        for gt_label, (gx, gy) in GROUND_TRUTH.items():
+            dist = np.sqrt((ox - gx)**2 + (oy - gy)**2)
+            if dist < best_dist:
+                best_dist = dist
+                best_gx, best_gy = gx, gy
+
+        if best_gx is not None:
+            plt.plot([ox, best_gx], [oy, best_gy], '--', color=color, linewidth=1.0)
+            plt.text((ox + best_gx) / 2, (oy + best_gy) / 2,
+                     f'{best_dist:.2f}m', fontsize=8, color=color)
+
+    plt.xlabel('X (m)')
+    plt.ylabel('Y (m)')
+    plt.title('Semantic Map — Detected vs Ground Truth')
+    plt.legend(handles=[
+        plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
+                   markersize=10, label='Ground Truth'),
+        plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='red',
+                   markersize=10, label='Detected')
+    ])
+    plt.grid(True)
+    plt.axis('equal')
+
+    plot_path = os.path.join(output_dir, 'map_plot_final.png')
+    plt.savefig(plot_path, dpi=150)
+    plt.close()
+
+    return plot_path
+
+
 class FrameProcessor(Node):
     def __init__(self):
         super().__init__('frame_processing_node')
@@ -194,14 +261,14 @@ class FrameProcessor(Node):
         process_count = 0
         latest_odom = None
 
-        # Ray stack: {label: [(origin, ray), ...]}
         ray_stack = {}
-
-        # Candidate stack: {label: [(x, y), ...]}
         candidate_stack = {}
 
         total_pairs_triangulated = 0
         total_pairs_skipped = 0
+
+        # --- Timer start ---
+        loop_start_time = time.time()
 
         while reader.has_next():
             topic, data, timestamp = reader.read_next()
@@ -284,10 +351,17 @@ class FrameProcessor(Node):
 
             frame_count += 1
 
+        # --- Timer end ---
+        loop_elapsed = time.time() - loop_start_time
+
         self.get_logger().info(f'Total frames in bag: {frame_count}')
         self.get_logger().info(f'Frames processed: {process_count}')
         self.get_logger().info(f'Pairs triangulated: {total_pairs_triangulated}')
         self.get_logger().info(f'Pairs skipped: {total_pairs_skipped}')
+        self.get_logger().info(
+            f'Processing loop time: {loop_elapsed:.3f}s '
+            f'({loop_elapsed/60:.2f} min)'
+        )
 
         # DBSCAN clustering -> object stack
         object_stack = {}
@@ -302,11 +376,14 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack.json')
+        json_path = os.path.join(output_dir, 'object_stack_newUpd.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
-
         self.get_logger().info(f'Object stack saved to: {json_path}')
+
+        # Save map plot
+        plot_path = save_map_plot(object_stack, output_dir)
+        self.get_logger().info(f'Map plot saved to: {plot_path}')
 
 
 def main(args=None):

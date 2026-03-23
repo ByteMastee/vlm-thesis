@@ -13,7 +13,7 @@ IMAGE_TOPIC = '/fisheye/front/fisheye_front/image_raw'
 FRAME_SKIP = 12
 CONFIDENCE = 0.45
 MODEL = '/root/yolo26m.pt'
-OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/yolo_frames2'
+OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/yolo_frames3'
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
