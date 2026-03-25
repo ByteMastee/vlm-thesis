@@ -211,6 +211,27 @@ class RayVisualizer(Node):
                         marker_array.markers.append(marker)
                         marker_id += 1
 
+                        # Robot position sphere marker
+                        sphere_marker = Marker()
+                        sphere_marker.header.frame_id = 'odom'
+                        sphere_marker.header.stamp = self.get_clock().now().to_msg()
+                        sphere_marker.ns = 'robot_positions'
+                        sphere_marker.id = marker_id + 10000
+                        sphere_marker.type = Marker.SPHERE
+                        sphere_marker.action = Marker.ADD
+                        sphere_marker.scale.x = 0.15
+                        sphere_marker.scale.y = 0.15
+                        sphere_marker.scale.z = 0.15
+                        sphere_marker.color.a = 1.0
+                        sphere_marker.color.r = 0.0
+                        sphere_marker.color.g = 1.0
+                        sphere_marker.color.b = 0.0
+                        sphere_marker.pose.position.x = float(rx)
+                        sphere_marker.pose.position.y = float(ry)
+                        sphere_marker.pose.position.z = 0.0
+                        sphere_marker.pose.orientation.w = 1.0
+                        marker_array.markers.append(sphere_marker) 
+
                         self.get_logger().info(
                             f'Frame {frame_count} | {label} ({cx},{cy}) | '
                             f'origin: ({origin[0]:.3f},{origin[1]:.3f},{origin[2]:.3f}) | '
