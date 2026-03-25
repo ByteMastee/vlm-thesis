@@ -44,10 +44,10 @@ DBSCAN_MIN_SAMPLES = 3
 
 # Ground truth from Gazebo world file
 GROUND_TRUTH = {
-    'chair_1': (-3.0,  2.0),
+    'chair_1': (-3.0, 2.0),
     'chair_2': (-3.5, -2.5),
-    'couch':   ( 3.5,  0.0),
-    'table':   ( 2.0,  2.5)
+    'couch':   ( 3.5, 0.0),
+    'table':   ( 2.0, 2.5)
 }
 
 
@@ -204,7 +204,7 @@ def save_map_plot(object_stack, output_dir):
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot_final.png')
+    plot_path = os.path.join(output_dir, 'map_plot_final5.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -376,7 +376,7 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack_newUpd.json')
+        json_path = os.path.join(output_dir, 'object_stack_newUpd5.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')

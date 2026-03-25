@@ -24,17 +24,17 @@ class NewMapNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.map_resolution = 0.10
-        self.map_width = 1200
-        self.map_height = 1200
-        self.map_origin_x = -30.0
-        self.map_origin_y = -30.0
+        self.map_resolution = 0.1
+        self.map_width = 300
+        self.map_height = 240
+        self.map_origin_x = -15.0
+        self.map_origin_y = -12.0
 
         self.min_valid_depth = 0.2
-        self.max_valid_depth = 8.0
+        self.max_valid_depth = 10.0
 
         # Top-camera world-height filter
-        self.min_obstacle_height = 0.10
+        self.min_obstacle_height = 0.12
         self.max_obstacle_height = 1.50
 
         self.u_step = 15
@@ -62,7 +62,7 @@ class NewMapNode(Node):
             10
         )
 
-        self.get_logger().info('ne_map_node started with TF-based robot pose and top camera.')
+        self.get_logger().info('new_map_node started with TF-based robot pose and top camera.')
 
     def info_callback(self, msg: CameraInfo):
         self.latest_camera_info = msg

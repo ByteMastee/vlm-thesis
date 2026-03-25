@@ -91,6 +91,8 @@ class RayVisualizer(Node):
 
         self.get_logger().info('Ray visualizer started')
 
+        self.latest_odom_msg = None
+
         model = YOLO(MODEL_PATH)
 
         storage_options = rosbag2_py.StorageOptions(uri=BAG_PATH, storage_id='sqlite3')
@@ -130,6 +132,7 @@ class RayVisualizer(Node):
         latest_odom = None
         marker_id = 0
         marker_array = MarkerArray()
+        PUBLISH_DELAY = 4.0 #time between each frame rays
 
         while reader.has_next():
             topic, data, timestamp = reader.read_next()
@@ -141,6 +144,7 @@ class RayVisualizer(Node):
 
             if topic == ODOM_TOPIC:
                 latest_odom = deserialize_message(data, odom_msg_type)
+                self.latest_odom_msg = latest_odom
                 self.odom_pub.publish(latest_odom)
                 continue
 
@@ -215,11 +219,35 @@ class RayVisualizer(Node):
 
             frame_count += 1
 
+        # self.get_logger().info(f'Total markers: {len(marker_array.markers)}')
+        # self.get_logger().info('Publishing markers on /thesis/rays')
+
+        # self.create_timer(1.0, lambda: self.publisher.publish(marker_array))
+
+        # NEW UPDATE
         self.get_logger().info(f'Total markers: {len(marker_array.markers)}')
-        self.get_logger().info('Publishing markers on /thesis/rays')
+        self.get_logger().info('All markers collected. Publishing sequentially...')
 
-        self.create_timer(1.0, lambda: self.publisher.publish(marker_array))
+        self.sequential_markers = marker_array.markers[:]
+        self.published_so_far = MarkerArray()
+        self.create_timer(PUBLISH_DELAY, self.publish_next_marker)
+        self.create_timer(0.1, self.republish_latest_odom)
 
+    def publish_next_marker(self):
+        if self.sequential_markers:
+            next_marker = self.sequential_markers.pop(0)
+            self.published_so_far.markers.append(next_marker)
+            self.publisher.publish(self.published_so_far)
+            self.get_logger().info(
+                f'Published marker {next_marker.id} | '
+                f'remaining: {len(self.sequential_markers)}'
+            )
+        else:
+            self.get_logger().info('All markers published.')
+
+    def republish_latest_odom(self):
+        if self.latest_odom_msg is not None:
+            self.odom_pub.publish(self.latest_odom_msg)
 
 def main(args=None):
     rclpy.init(args=args)

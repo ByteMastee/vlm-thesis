@@ -50,8 +50,8 @@ class MapSaverNode(Node):
 
         image = np.flipud(image)
 
-        pgm_path = self.output_dir / 'map.pgm'
-        yaml_path = self.output_dir / 'map.yaml'
+        pgm_path = self.output_dir / 'mapNew2.pgm'
+        yaml_path = self.output_dir / 'mapNew2.yaml'
 
         Image.fromarray(image).save(pgm_path)
 
