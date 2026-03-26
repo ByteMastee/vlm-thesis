@@ -112,53 +112,6 @@ def closest_approach_midpoint(o1, d1, o2, d2):
     return midpoint
 
 
-class ObjectEKF:
-    def __init__(self, init_x, init_y):
-        # State: [x, y]
-        self.x = np.array([init_x, init_y], dtype=float)
-
-        # State covariance — high initial uncertainty
-        self.P = np.eye(2) * 5.0
-
-        # Process noise — object is static
-        self.Q = np.eye(2) * 0.01
-
-        # Observation noise — triangulation uncertainty
-        self.R = np.eye(2) * 0.5
-
-        # Observation matrix
-        self.H = np.eye(2)
-
-    def predict(self):
-        # Static model: state unchanged, covariance grows slightly
-        self.P = self.P + self.Q
-
-    def update(self, z):
-        z = np.array(z, dtype=float)
-        y = z - self.H @ self.x
-        S = self.H @ self.P @ self.H.T + self.R
-        K = self.P @ self.H.T @ np.linalg.inv(S)
-        self.x = self.x + K @ y
-        self.P = (np.eye(2) - K @ self.H) @ self.P
-
-    def get_estimate(self):
-        return float(self.x[0]), float(self.x[1])
-
-
-def run_ekf_on_points(pts):
-    """Sort points by distance to centroid, then run EKF."""
-    centroid = np.mean(pts, axis=0)
-    dists = np.linalg.norm(pts - centroid, axis=1)
-    sorted_pts = pts[np.argsort(dists)]
-
-    ekf = ObjectEKF(sorted_pts[0][0], sorted_pts[0][1])
-    for pt in sorted_pts[1:]:
-        ekf.predict()
-        ekf.update([pt[0], pt[1]])
-
-    return ekf.get_estimate()
-
-
 def cluster_candidates(candidates, label):
     object_entries = {}
 
@@ -168,8 +121,8 @@ def cluster_candidates(candidates, label):
     pts = np.array(candidates)
 
     if len(pts) < DBSCAN_MIN_SAMPLES:
-        # Too few points — run EKF directly
-        final_x, final_y = run_ekf_on_points(pts)
+        final_x = float(np.median(pts[:, 0]))
+        final_y = float(np.median(pts[:, 1]))
         object_entries[label] = {
             'x': round(final_x, 4),
             'y': round(final_y, 4),
@@ -188,9 +141,8 @@ def cluster_candidates(candidates, label):
 
     for cluster_id in sorted(unique_clusters):
         cluster_pts = pts[labels_db == cluster_id]
-
-        # EKF with centroid-sorted points instead of median
-        final_x, final_y = run_ekf_on_points(cluster_pts)
+        final_x = float(np.median(cluster_pts[:, 0]))
+        final_y = float(np.median(cluster_pts[:, 1]))
 
         if len(unique_clusters) == 1:
             instance_label = label
@@ -249,8 +201,8 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
 
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
-    plt.title('Semantic Map — Detected vs Ground Truth (Centroid + EKF)')
-
+    plt.title('Semantic Map — Detected vs Ground Truth')
+    
     plt.legend(handles=[
         plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                    markersize=10, label='Ground Truth'),
@@ -262,11 +214,11 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
         plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='red',
                    markersize=8, label='End')
     ])
-
+    
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot_centroid_ekf.png')
+    plot_path = os.path.join(output_dir, 'map_plot1.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -285,13 +237,13 @@ class FrameProcessor(Node):
         self.declare_parameter('model_path', '/root/yolo26m.pt')
         self.declare_parameter('output_dir', '/root/UVC_ws/vf_robot_model_ros2/pp_tunning')
 
-        bag_path    = self.get_parameter('bag_path').value
+        bag_path = self.get_parameter('bag_path').value
         image_topic = self.get_parameter('image_topic').value
-        odom_topic  = self.get_parameter('odom_topic').value
-        frame_skip  = self.get_parameter('frame_skip').value
-        confidence  = self.get_parameter('confidence').value
-        model_path  = self.get_parameter('model_path').value
-        output_dir  = self.get_parameter('output_dir').value
+        odom_topic = self.get_parameter('odom_topic').value
+        frame_skip = self.get_parameter('frame_skip').value
+        confidence = self.get_parameter('confidence').value
+        model_path = self.get_parameter('model_path').value
+        output_dir = self.get_parameter('output_dir').value
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -317,19 +269,20 @@ class FrameProcessor(Node):
         reader.set_filter(storage_filter)
 
         image_msg_type = get_message(type_map[image_topic])
-        odom_msg_type  = get_message(type_map[odom_topic])
+        odom_msg_type = get_message(type_map[odom_topic])
 
-        frame_count   = 0
+        frame_count = 0
         process_count = 0
-        latest_odom   = None
+        latest_odom = None
 
-        ray_stack       = {}
+        ray_stack = {}
         candidate_stack = {}
 
         total_pairs_triangulated = 0
-        total_pairs_skipped      = 0
-        robot_x, robot_y = [], []
+        total_pairs_skipped = 0
+        robot_x, robot_y = [], [] # For use in Robot Trajectory Plotting
 
+        # --- Timer start ---
         loop_start_time = time.time()
 
         while reader.has_next():
@@ -363,26 +316,27 @@ class FrameProcessor(Node):
 
                 results = model(img, conf=confidence, verbose=False)
 
-                rx  = latest_odom.pose.pose.position.x
-                ry  = latest_odom.pose.pose.position.y
-                q   = latest_odom.pose.pose.orientation
+                rx = latest_odom.pose.pose.position.x
+                ry = latest_odom.pose.pose.position.y
+                q = latest_odom.pose.pose.orientation
                 yaw = np.arctan2(
-                    2 * (q.w * q.z + q.x * q.y),
-                    1 - 2 * (q.y**2 + q.z**2)
+                    2*(q.w*q.z + q.x*q.y),
+                    1 - 2*(q.y**2 + q.z**2)
                 )
 
                 for result in results:
                     for box in result.boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         cls_id = int(box.cls[0])
-                        label  = model.names[cls_id]
+                        label = model.names[cls_id]
                         cx = (x1 + x2) // 2
                         cy = (y1 + y2) // 2
 
                         origin, ray = pixel_to_ray_odom(cx, cy, rx, ry, yaw)
 
                         if label not in ray_stack:
-                            ray_stack[label]       = []
+                            ray_stack[label] = []
+                        if label not in candidate_stack:
                             candidate_stack[label] = []
 
                         for prev_origin, prev_ray in ray_stack[label]:
@@ -414,6 +368,7 @@ class FrameProcessor(Node):
 
             frame_count += 1
 
+        # --- Timer end ---
         loop_elapsed = time.time() - loop_start_time
 
         self.get_logger().info(f'Total frames in bag: {frame_count}')
@@ -425,7 +380,7 @@ class FrameProcessor(Node):
             f'({loop_elapsed/60:.2f} min)'
         )
 
-        # DBSCAN clustering -> EKF per cluster
+        # DBSCAN clustering -> object stack
         object_stack = {}
         for label, candidates in candidate_stack.items():
             entries = cluster_candidates(candidates, label)
@@ -438,7 +393,7 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack_centroid_ekf.json')
+        json_path = os.path.join(output_dir, 'object_stack1.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
@@ -453,8 +408,7 @@ class FrameProcessor(Node):
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.get_logger().info(f'Robot path saved to: {robot_path_json}')
-
-
+        
 def main(args=None):
     rclpy.init(args=args)
     node = FrameProcessor()
