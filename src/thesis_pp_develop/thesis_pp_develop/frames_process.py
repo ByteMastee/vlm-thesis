@@ -36,6 +36,11 @@ R_optical_to_base = np.array([
 # Camera offset from base_link
 T_CAM_OFFSET = np.array([7.00000000e-02, 0.00000000e+00, 1.84500000e+00])
 
+# ORB parameters
+MAX_ORB_FEATURES = 500
+MIN_MATCH_COUNT = 2
+LOWE_RATIO = 0.75
+
 # Triangulation parameters
 MIN_ANGLE_DEG = 5.0
 
@@ -52,16 +57,31 @@ GROUND_TRUTH = {
 }
 
 
-def pixel_to_ray_odom(cx, cy, robot_x, robot_y, yaw):
-    x = (cx - CX_0) / FX
-    y = (cy - CY_0) / FY
+def get_camera_origin_in_odom(robot_x, robot_y, yaw):
+    c, s = np.cos(yaw), np.sin(yaw)
+    R2d = np.array([[c, -s], [s, c]])
+    cam_offset_rotated = R2d @ T_CAM_OFFSET[:2]
+    origin = np.array([
+        robot_x + cam_offset_rotated[0],
+        robot_y + cam_offset_rotated[1],
+        T_CAM_OFFSET[2]
+    ])
+    return origin
+
+
+def pixel_to_ray_odom(px, py, robot_x, robot_y, yaw):
+    # Pixel to normalized camera coords
+    x = (px - CX_0) / FX
+    y = (py - CY_0) / FY
     z = 1.0
     ray_cam = np.array([x, y, z])
     ray_cam = ray_cam / np.linalg.norm(ray_cam)
 
+    # optical_frame -> base_link
     ray_base = R_optical_to_base @ ray_cam
     ray_base = ray_base / np.linalg.norm(ray_base)
 
+    # base_link -> odom (apply yaw)
     c, s = np.cos(yaw), np.sin(yaw)
     R_yaw = np.array([
         [c, -s, 0],
@@ -71,13 +91,7 @@ def pixel_to_ray_odom(cx, cy, robot_x, robot_y, yaw):
     ray_odom = R_yaw @ ray_base
     ray_odom = ray_odom / np.linalg.norm(ray_odom)
 
-    R2d = np.array([[c, -s], [s, c]])
-    cam_offset_rotated = R2d @ T_CAM_OFFSET[:2]
-    origin = np.array([
-        robot_x + cam_offset_rotated[0],
-        robot_y + cam_offset_rotated[1],
-        T_CAM_OFFSET[2]
-    ])
+    origin = get_camera_origin_in_odom(robot_x, robot_y, yaw)
 
     return origin, ray_odom
 
@@ -110,6 +124,66 @@ def closest_approach_midpoint(o1, d1, o2, d2):
     midpoint = (p1 + p2) / 2.0
 
     return midpoint
+
+
+def extract_orb_keypoints(img, bbox):
+    x1, y1, x2, y2 = bbox
+    x1 = max(0, x1)
+    y1 = max(0, y1)
+    x2 = min(img.shape[1], x2)
+    y2 = min(img.shape[0], y2)
+
+    if x2 <= x1 or y2 <= y1:
+        return None, None, None
+
+    crop = img[y1:y2, x1:x2]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+    # Upscale small crops
+    h, w = gray.shape
+    if h < 60 or w < 60:
+        scale = max(60 / h, 60 / w)
+        gray = cv2.resize(gray, (int(w * scale), int(h * scale)),
+                          interpolation=cv2.INTER_CUBIC)
+
+    # CLAHE contrast enhancement
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    gray = clahe.apply(gray)
+
+    orb = cv2.ORB_create(nfeatures=MAX_ORB_FEATURES, scaleFactor=1.1, nlevels=16)
+    kps, descs = orb.detectAndCompute(gray, None)
+
+    if kps is None or descs is None or len(kps) == 0:
+        print(f'ORB: 0 keypoints in crop size {crop.shape}')
+        return None, None, None
+
+    print(f'ORB: {len(kps)} keypoints in crop size {crop.shape}')
+
+    # Convert keypoints back to full image coords
+    # Account for upscaling
+    orig_h, orig_w = crop.shape[:2]
+    scale_x = orig_w / gray.shape[1]
+    scale_y = orig_h / gray.shape[0]
+
+    kps_full = []
+    for kp in kps:
+        full_x = kp.pt[0] * scale_x + x1
+        full_y = kp.pt[1] * scale_y + y1
+        kps_full.append((full_x, full_y))
+
+    return kps_full, descs, crop
+
+
+def match_orb_features(descs1, descs2):
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.knnMatch(descs1, descs2, k=2)
+
+    good = []
+    for m, n in matches:
+        if m.distance < LOWE_RATIO * n.distance:
+            good.append(m)
+
+    return good
 
 
 def cluster_candidates(candidates, label):
@@ -161,20 +235,17 @@ def cluster_candidates(candidates, label):
 def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.figure(figsize=(10, 10))
 
-    # Plot robot trajectory
     if robot_x and robot_y:
         plt.plot(robot_x, robot_y, 'b-', linewidth=1.0, alpha=0.5)
         plt.plot(robot_x[0], robot_y[0], 'go', markersize=8)
         plt.plot(robot_x[-1], robot_y[-1], 'rs', markersize=8)
 
-    # Plot ground truth
     for label, (gx, gy) in GROUND_TRUTH.items():
         plt.plot(gx, gy, 'g^', markersize=12)
         plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
                      textcoords='offset points', xytext=(8, 8),
                      fontsize=9, color='green')
 
-    # Plot detected object stack
     colors = ['red', 'orange', 'purple', 'cyan', 'magenta']
     for i, (label, data) in enumerate(object_stack.items()):
         ox = data['x']
@@ -185,7 +256,6 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
                      textcoords='offset points', xytext=(8, -18),
                      fontsize=9, color=color)
 
-        # Draw error line to nearest GT
         best_dist = float('inf')
         best_gx, best_gy = None, None
         for gt_label, (gx, gy) in GROUND_TRUTH.items():
@@ -201,8 +271,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
 
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
-    plt.title('Semantic Map — Detected vs Ground Truth')
-    
+    plt.title('Semantic Map — Detected vs Ground Truth (ORB)')
     plt.legend(handles=[
         plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                    markersize=10, label='Ground Truth'),
@@ -214,11 +283,10 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
         plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='red',
                    markersize=8, label='End')
     ])
-    
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot1.png')
+    plot_path = os.path.join(output_dir, 'map_plot3.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -237,13 +305,13 @@ class FrameProcessor(Node):
         self.declare_parameter('model_path', '/root/yolo26m.pt')
         self.declare_parameter('output_dir', '/root/UVC_ws/vf_robot_model_ros2/pp_tunning')
 
-        bag_path = self.get_parameter('bag_path').value
-        image_topic = self.get_parameter('image_topic').value
-        odom_topic = self.get_parameter('odom_topic').value
-        frame_skip = self.get_parameter('frame_skip').value
-        confidence = self.get_parameter('confidence').value
-        model_path = self.get_parameter('model_path').value
-        output_dir = self.get_parameter('output_dir').value
+        bag_path      = self.get_parameter('bag_path').value
+        image_topic   = self.get_parameter('image_topic').value
+        odom_topic    = self.get_parameter('odom_topic').value
+        frame_skip    = self.get_parameter('frame_skip').value
+        confidence    = self.get_parameter('confidence').value
+        model_path    = self.get_parameter('model_path').value
+        output_dir    = self.get_parameter('output_dir').value
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -269,20 +337,20 @@ class FrameProcessor(Node):
         reader.set_filter(storage_filter)
 
         image_msg_type = get_message(type_map[image_topic])
-        odom_msg_type = get_message(type_map[odom_topic])
+        odom_msg_type  = get_message(type_map[odom_topic])
 
-        frame_count = 0
+        frame_count   = 0
         process_count = 0
-        latest_odom = None
+        latest_odom   = None
 
-        ray_stack = {}
+        # Per-label storage: list of (kps_full, descs, robot_x, robot_y, yaw)
+        feature_stack = {}
         candidate_stack = {}
 
         total_pairs_triangulated = 0
-        total_pairs_skipped = 0
-        robot_x, robot_y = [], [] # For use in Robot Trajectory Plotting
+        total_pairs_skipped      = 0
+        robot_x_list, robot_y_list = [], []
 
-        # --- Timer start ---
         loop_start_time = time.time()
 
         while reader.has_next():
@@ -290,8 +358,8 @@ class FrameProcessor(Node):
 
             if topic == odom_topic:
                 latest_odom = deserialize_message(data, odom_msg_type)
-                robot_x.append(latest_odom.pose.pose.position.x)
-                robot_y.append(latest_odom.pose.pose.position.y)
+                robot_x_list.append(latest_odom.pose.pose.position.x)
+                robot_y_list.append(latest_odom.pose.pose.position.y)
                 continue
 
             if topic != image_topic:
@@ -318,47 +386,64 @@ class FrameProcessor(Node):
 
                 rx = latest_odom.pose.pose.position.x
                 ry = latest_odom.pose.pose.position.y
-                q = latest_odom.pose.pose.orientation
+                q  = latest_odom.pose.pose.orientation
                 yaw = np.arctan2(
-                    2*(q.w*q.z + q.x*q.y),
-                    1 - 2*(q.y**2 + q.z**2)
+                    2 * (q.w * q.z + q.x * q.y),
+                    1 - 2 * (q.y**2 + q.z**2)
                 )
 
                 for result in results:
                     for box in result.boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         cls_id = int(box.cls[0])
-                        label = model.names[cls_id]
-                        cx = (x1 + x2) // 2
-                        cy = (y1 + y2) // 2
+                        label  = model.names[cls_id]
 
-                        origin, ray = pixel_to_ray_odom(cx, cy, rx, ry, yaw)
+                        # Extract ORB keypoints inside bounding box
+                        kps_full, descs, _ = extract_orb_keypoints(img, (x1, y1, x2, y2))
 
-                        if label not in ray_stack:
-                            ray_stack[label] = []
-                        if label not in candidate_stack:
-                            candidate_stack[label] = []
+                        if kps_full is None:
+                            continue
 
-                        for prev_origin, prev_ray in ray_stack[label]:
-                            angle = angle_between_rays(ray, prev_ray)
+                        if label not in feature_stack:
+                            feature_stack[label]    = []
+                            candidate_stack[label]  = []
 
-                            if angle < MIN_ANGLE_DEG:
+                        # Match against all previous frames for this label
+                        for prev_kps, prev_descs, prev_rx, prev_ry, prev_yaw in feature_stack[label]:
+
+                            if len(descs) < 2 or len(prev_descs) < 2:
+                                continue
+
+                            good_matches = match_orb_features(prev_descs, descs)
+
+                            if len(good_matches) < MIN_MATCH_COUNT:
                                 total_pairs_skipped += 1
                                 continue
 
-                            midpoint = closest_approach_midpoint(
-                                prev_origin, prev_ray, origin, ray
-                            )
+                            # Triangulate each matched keypoint pair
+                            for m in good_matches:
+                                px1, py1 = prev_kps[m.queryIdx]
+                                px2, py2 = kps_full[m.trainIdx]
 
-                            if midpoint is None:
-                                continue
+                                o1, d1 = pixel_to_ray_odom(px1, py1, prev_rx, prev_ry, prev_yaw)
+                                o2, d2 = pixel_to_ray_odom(px2, py2, rx, ry, yaw)
 
-                            candidate_stack[label].append(
-                                (midpoint[0], midpoint[1])
-                            )
-                            total_pairs_triangulated += 1
+                                angle = angle_between_rays(d1, d2)
+                                if angle < MIN_ANGLE_DEG:
+                                    continue
 
-                        ray_stack[label].append((origin, ray))
+                                midpoint = closest_approach_midpoint(o1, d1, o2, d2)
+                                if midpoint is None:
+                                    continue
+
+                                candidate_stack[label].append(
+                                    (midpoint[0], midpoint[1])
+                                )
+                                total_pairs_triangulated += 1
+
+                        feature_stack[label].append(
+                            (kps_full, descs, rx, ry, yaw)
+                        )
 
                 process_count += 1
                 self.get_logger().info(
@@ -368,7 +453,6 @@ class FrameProcessor(Node):
 
             frame_count += 1
 
-        # --- Timer end ---
         loop_elapsed = time.time() - loop_start_time
 
         self.get_logger().info(f'Total frames in bag: {frame_count}')
@@ -380,7 +464,7 @@ class FrameProcessor(Node):
             f'({loop_elapsed/60:.2f} min)'
         )
 
-        # DBSCAN clustering -> object stack
+        # DBSCAN clustering
         object_stack = {}
         for label, candidates in candidate_stack.items():
             entries = cluster_candidates(candidates, label)
@@ -393,23 +477,23 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack1.json')
+        json_path = os.path.join(output_dir, 'object_stack3.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
 
-        # Save map plot
-        plot_path = save_map_plot(object_stack, output_dir, robot_x, robot_y)
-        self.get_logger().info(f'Map plot saved to: {plot_path}')
-
-        # Save robot path for RViz
-        robot_path_data = {'x': robot_x, 'y': robot_y}
-        robot_path_json = os.path.join(output_dir, 'robot_path.json')
+        # Save robot path
+        robot_path_data = {'x': robot_x_list, 'y': robot_y_list}
+        robot_path_json = os.path.join(output_dir, 'robot_path3.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.get_logger().info(f'Robot path saved to: {robot_path_json}')
 
-        
+        # Save map plot
+        plot_path = save_map_plot(object_stack, output_dir, robot_x_list, robot_y_list)
+        self.get_logger().info(f'Map plot saved to: {plot_path}')
+
+
 def main(args=None):
     rclpy.init(args=args)
     node = FrameProcessor()
