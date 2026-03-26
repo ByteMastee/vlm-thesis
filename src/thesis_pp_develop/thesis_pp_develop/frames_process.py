@@ -6,11 +6,11 @@ import json
 import cv2
 import numpy as np
 
+from sklearn.cluster import DBSCAN
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
-from sklearn.cluster import DBSCAN
 
 import rclpy
 from rclpy.node import Node
@@ -43,13 +43,12 @@ LOWE_RATIO = 0.75
 # Triangulation parameters
 MIN_ANGLE_DEG = 5.0
 
-# DBSCAN parameters
-DBSCAN_EPS = 1.0
-DBSCAN_MIN_SAMPLES = 3
-
 # Filter parameters
 MIN_CLUSTER_CANDIDATES = 4
 MAP_BOUNDS = 6.0  # metres from origin
+
+DBSCAN_EPS = 1.0
+DBSCAN_MIN_SAMPLES = 3
 
 # Ground truth from Gazebo world file
 GROUND_TRUTH = {
@@ -186,64 +185,48 @@ def match_sift_features(descs1, descs2):
     return good
 
 
-def cluster_candidates(candidates, label):
-    object_entries = {}
+class ObjectEKF:
+    def __init__(self, init_x, init_y):
+        # State: [x, y]
+        self.x = np.array([init_x, init_y], dtype=float)
 
-    if len(candidates) == 0:
-        return object_entries
+        # State covariance — high initial uncertainty
+        self.P = np.eye(2) * 5.0
 
-    pts = np.array(candidates)
+        # Process noise — object is static, small value
+        self.Q = np.eye(2) * 0.01
 
-    if len(pts) < DBSCAN_MIN_SAMPLES:
-        final_x = float(np.median(pts[:, 0]))
-        final_y = float(np.median(pts[:, 1]))
-        object_entries[label] = {
-            'x': round(final_x, 4),
-            'y': round(final_y, 4),
-            'num_candidates': len(pts)
-        }
-        return object_entries
+        # Observation noise — triangulation uncertainty
+        self.R = np.eye(2) * 0.5
 
-    db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(pts)
-    labels_db = db.labels_
+        # Observation matrix
+        self.H = np.eye(2)
 
-    unique_clusters = set(labels_db)
-    unique_clusters.discard(-1)
+    def predict(self):
+        # Static model: state unchanged, covariance grows slightly
+        self.P = self.P + self.Q
 
-    if len(unique_clusters) == 0:
-        return object_entries
+    def update(self, z):
+        z = np.array(z, dtype=float)
 
-    for cluster_id in sorted(unique_clusters):
-        cluster_pts = pts[labels_db == cluster_id]
-        final_x = float(np.median(cluster_pts[:, 0]))
-        final_y = float(np.median(cluster_pts[:, 1]))
+        # Innovation
+        y = z - self.H @ self.x
 
-        if len(unique_clusters) == 1:
-            instance_label = label
-        else:
-            instance_label = f'{label}_{cluster_id + 1}'
+        # Innovation covariance
+        S = self.H @ self.P @ self.H.T + self.R
 
-        object_entries[instance_label] = {
-            'x': round(final_x, 4),
-            'y': round(final_y, 4),
-            'num_candidates': len(cluster_pts)
-        }
+        # Kalman gain
+        K = self.P @ self.H.T @ np.linalg.inv(S)
 
-    return object_entries
+        # State update
+        self.x = self.x + K @ y
 
-def filter_object_stack(object_stack):
-    filtered = {}
-    for label, data in object_stack.items():
-        # Filter 1: minimum candidates
-        if data['num_candidates'] < MIN_CLUSTER_CANDIDATES:
-            print(f'FILTER: {label} removed — only {data["num_candidates"]} candidates')
-            continue
-        # Filter 2: spatial bounds
-        if abs(data['x']) > MAP_BOUNDS or abs(data['y']) > MAP_BOUNDS:
-            print(f'FILTER: {label} removed — out of bounds ({data["x"]}, {data["y"]})')
-            continue
-        filtered[label] = data
-    return filtered
+        # Covariance update
+        self.P = (np.eye(2) - K @ self.H) @ self.P
+
+    def get_estimate(self):
+        return float(self.x[0]), float(self.x[1])
+
 
 def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.figure(figsize=(10, 10))
@@ -284,7 +267,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
 
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
-    plt.title('Semantic Map — Detected vs Ground Truth (SIFT)')
+    plt.title('Semantic Map — Detected vs Ground Truth (SIFT + EKF)')
     plt.legend(handles=[
         plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                    markersize=10, label='Ground Truth'),
@@ -299,7 +282,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot5.png')
+    plot_path = os.path.join(output_dir, 'map_plot_sift_ekf.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -356,8 +339,9 @@ class FrameProcessor(Node):
         process_count = 0
         latest_odom   = None
 
-        # Per-label storage: list of (kps_full, descs, rx, ry, yaw)
+        # Per-label storage
         feature_stack   = {}
+        ekf_stack       = {}
         candidate_stack = {}
 
         total_pairs_triangulated = 0
@@ -459,9 +443,12 @@ class FrameProcessor(Node):
                                 if midpoint is None:
                                     continue
 
-                                candidate_stack[label].append(
-                                    (midpoint[0], midpoint[1])
-                                )
+                                mx, my = midpoint[0], midpoint[1]
+
+                                if label not in candidate_stack:
+                                    candidate_stack[label] = []
+
+                                candidate_stack[label].append((mx, my))
                                 total_pairs_triangulated += 1
 
                         feature_stack[label].append(
@@ -487,13 +474,61 @@ class FrameProcessor(Node):
             f'({loop_elapsed/60:.2f} min)'
         )
 
-        # DBSCAN clustering -> final object positions
+        # --- Post-processing: DBSCAN on candidates, EKF estimate per cluster ---
         object_stack = {}
-        for label, candidates in candidate_stack.items():
-            entries = cluster_candidates(candidates, label)
-            object_stack.update(entries)
 
-        object_stack = filter_object_stack(object_stack)
+        for label, candidates in candidate_stack.items():
+            if len(candidates) == 0:
+                continue
+
+            pts = np.array(candidates)
+
+            # DBSCAN to split multi-instance detections
+            if len(pts) >= DBSCAN_MIN_SAMPLES:
+                db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(pts)
+                labels_db = db.labels_
+                unique_clusters = set(labels_db)
+                unique_clusters.discard(-1)
+            else:
+                # Too few points — treat as single cluster
+                unique_clusters = {0}
+                labels_db = np.zeros(len(pts), dtype=int)
+
+            if len(unique_clusters) == 0:
+                continue
+
+            for cluster_id in sorted(unique_clusters):
+                cluster_pts = pts[labels_db == cluster_id]
+
+                if len(cluster_pts) < MIN_CLUSTER_CANDIDATES:
+                    print(f'FILTER: {label} cluster {cluster_id} removed '
+                          f'— only {len(cluster_pts)} candidates')
+                    continue
+
+                # Run EKF on this cluster's points
+                first = cluster_pts[0]
+                ekf = ObjectEKF(first[0], first[1])
+                for pt in cluster_pts[1:]:
+                    ekf.predict()
+                    ekf.update([pt[0], pt[1]])
+
+                ex, ey = ekf.get_estimate()
+
+                if abs(ex) > MAP_BOUNDS or abs(ey) > MAP_BOUNDS:
+                    print(f'FILTER: {label} cluster {cluster_id} removed '
+                          f'— out of bounds ({ex:.2f},{ey:.2f})')
+                    continue
+
+                if len(unique_clusters) == 1:
+                    instance_label = label
+                else:
+                    instance_label = f'{label}_{cluster_id + 1}'
+
+                object_stack[instance_label] = {
+                    'x': round(ex, 4),
+                    'y': round(ey, 4),
+                    'num_candidates': len(cluster_pts)
+                }
 
         for label, data in object_stack.items():
             self.get_logger().info(
@@ -502,14 +537,14 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack5.json')
+        json_path = os.path.join(output_dir, 'object_stack_sift_ekf.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
 
         # Save robot path
         robot_path_data = {'x': robot_x_list, 'y': robot_y_list}
-        robot_path_json = os.path.join(output_dir, 'robot_path5.json')
+        robot_path_json = os.path.join(output_dir, 'robot_path.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.get_logger().info(f'Robot path saved to: {robot_path_json}')
