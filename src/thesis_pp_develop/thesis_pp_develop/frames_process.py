@@ -36,9 +36,8 @@ R_optical_to_base = np.array([
 # Camera offset from base_link
 T_CAM_OFFSET = np.array([7.00000000e-02, 0.00000000e+00, 1.84500000e+00])
 
-# ORB parameters
-MAX_ORB_FEATURES = 500
-MIN_MATCH_COUNT = 2
+# SIFT parameters
+MIN_MATCH_COUNT = 4
 LOWE_RATIO = 0.75
 
 # Triangulation parameters
@@ -47,6 +46,10 @@ MIN_ANGLE_DEG = 5.0
 # DBSCAN parameters
 DBSCAN_EPS = 1.0
 DBSCAN_MIN_SAMPLES = 3
+
+# Filter parameters
+MIN_CLUSTER_CANDIDATES = 4
+MAP_BOUNDS = 6.0  # metres from origin
 
 # Ground truth from Gazebo world file
 GROUND_TRUTH = {
@@ -70,18 +73,15 @@ def get_camera_origin_in_odom(robot_x, robot_y, yaw):
 
 
 def pixel_to_ray_odom(px, py, robot_x, robot_y, yaw):
-    # Pixel to normalized camera coords
     x = (px - CX_0) / FX
     y = (py - CY_0) / FY
     z = 1.0
     ray_cam = np.array([x, y, z])
     ray_cam = ray_cam / np.linalg.norm(ray_cam)
 
-    # optical_frame -> base_link
     ray_base = R_optical_to_base @ ray_cam
     ray_base = ray_base / np.linalg.norm(ray_base)
 
-    # base_link -> odom (apply yaw)
     c, s = np.cos(yaw), np.sin(yaw)
     R_yaw = np.array([
         [c, -s, 0],
@@ -126,7 +126,7 @@ def closest_approach_midpoint(o1, d1, o2, d2):
     return midpoint
 
 
-def extract_orb_keypoints(img, bbox):
+def extract_sift_keypoints(img, bbox):
     x1, y1, x2, y2 = bbox
     x1 = max(0, x1)
     y1 = max(0, y1)
@@ -139,43 +139,43 @@ def extract_orb_keypoints(img, bbox):
     crop = img[y1:y2, x1:x2]
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
 
-    # Upscale small crops
-    h, w = gray.shape
-    if h < 60 or w < 60:
-        scale = max(60 / h, 60 / w)
-        gray = cv2.resize(gray, (int(w * scale), int(h * scale)),
-                          interpolation=cv2.INTER_CUBIC)
+    # Upscale small crops so SIFT has enough pixels to detect features
+    orig_h, orig_w = gray.shape
+    scale_x, scale_y = 1.0, 1.0
+    if orig_h < 80 or orig_w < 80:
+        scale_x = max(80 / orig_w, 1.0)
+        scale_y = max(80 / orig_h, 1.0)
+        gray = cv2.resize(
+            gray,
+            (int(orig_w * scale_x), int(orig_h * scale_y)),
+            interpolation=cv2.INTER_CUBIC
+        )
 
     # CLAHE contrast enhancement
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
     gray = clahe.apply(gray)
 
-    orb = cv2.ORB_create(nfeatures=MAX_ORB_FEATURES, scaleFactor=1.1, nlevels=16)
-    kps, descs = orb.detectAndCompute(gray, None)
+    sift = cv2.SIFT_create()
+    kps, descs = sift.detectAndCompute(gray, None)
 
     if kps is None or descs is None or len(kps) == 0:
-        print(f'ORB: 0 keypoints in crop size {crop.shape}')
+        print(f'SIFT: 0 keypoints in crop size {crop.shape}')
         return None, None, None
 
-    print(f'ORB: {len(kps)} keypoints in crop size {crop.shape}')
+    print(f'SIFT: {len(kps)} keypoints in crop size {crop.shape}')
 
-    # Convert keypoints back to full image coords
-    # Account for upscaling
-    orig_h, orig_w = crop.shape[:2]
-    scale_x = orig_w / gray.shape[1]
-    scale_y = orig_h / gray.shape[0]
-
+    # Convert keypoint coords back to full image coords (undo upscale + bbox offset)
     kps_full = []
     for kp in kps:
-        full_x = kp.pt[0] * scale_x + x1
-        full_y = kp.pt[1] * scale_y + y1
+        full_x = (kp.pt[0] / scale_x) + x1
+        full_y = (kp.pt[1] / scale_y) + y1
         kps_full.append((full_x, full_y))
 
     return kps_full, descs, crop
 
 
-def match_orb_features(descs1, descs2):
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+def match_sift_features(descs1, descs2):
+    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
     matches = bf.knnMatch(descs1, descs2, k=2)
 
     good = []
@@ -231,6 +231,19 @@ def cluster_candidates(candidates, label):
 
     return object_entries
 
+def filter_object_stack(object_stack):
+    filtered = {}
+    for label, data in object_stack.items():
+        # Filter 1: minimum candidates
+        if data['num_candidates'] < MIN_CLUSTER_CANDIDATES:
+            print(f'FILTER: {label} removed — only {data["num_candidates"]} candidates')
+            continue
+        # Filter 2: spatial bounds
+        if abs(data['x']) > MAP_BOUNDS or abs(data['y']) > MAP_BOUNDS:
+            print(f'FILTER: {label} removed — out of bounds ({data["x"]}, {data["y"]})')
+            continue
+        filtered[label] = data
+    return filtered
 
 def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.figure(figsize=(10, 10))
@@ -271,7 +284,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
 
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
-    plt.title('Semantic Map — Detected vs Ground Truth (ORB)')
+    plt.title('Semantic Map — Detected vs Ground Truth (SIFT)')
     plt.legend(handles=[
         plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                    markersize=10, label='Ground Truth'),
@@ -286,7 +299,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot3.png')
+    plot_path = os.path.join(output_dir, 'map_plot5.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -343,8 +356,8 @@ class FrameProcessor(Node):
         process_count = 0
         latest_odom   = None
 
-        # Per-label storage: list of (kps_full, descs, robot_x, robot_y, yaw)
-        feature_stack = {}
+        # Per-label storage: list of (kps_full, descs, rx, ry, yaw)
+        feature_stack   = {}
         candidate_stack = {}
 
         total_pairs_triangulated = 0
@@ -398,23 +411,27 @@ class FrameProcessor(Node):
                         cls_id = int(box.cls[0])
                         label  = model.names[cls_id]
 
-                        # Extract ORB keypoints inside bounding box
-                        kps_full, descs, _ = extract_orb_keypoints(img, (x1, y1, x2, y2))
+                        # Extract SIFT keypoints inside YOLO bounding box only
+                        kps_full, descs, _ = extract_sift_keypoints(
+                            img, (x1, y1, x2, y2)
+                        )
 
                         if kps_full is None:
                             continue
 
                         if label not in feature_stack:
-                            feature_stack[label]    = []
-                            candidate_stack[label]  = []
+                            feature_stack[label]   = []
+                            candidate_stack[label] = []
 
-                        # Match against all previous frames for this label
-                        for prev_kps, prev_descs, prev_rx, prev_ry, prev_yaw in feature_stack[label]:
+                        # Match current frame keypoints against all previous
+                        # frames for the same label
+                        for prev_kps, prev_descs, prev_rx, prev_ry, prev_yaw \
+                                in feature_stack[label]:
 
                             if len(descs) < 2 or len(prev_descs) < 2:
                                 continue
 
-                            good_matches = match_orb_features(prev_descs, descs)
+                            good_matches = match_sift_features(prev_descs, descs)
 
                             if len(good_matches) < MIN_MATCH_COUNT:
                                 total_pairs_skipped += 1
@@ -425,14 +442,20 @@ class FrameProcessor(Node):
                                 px1, py1 = prev_kps[m.queryIdx]
                                 px2, py2 = kps_full[m.trainIdx]
 
-                                o1, d1 = pixel_to_ray_odom(px1, py1, prev_rx, prev_ry, prev_yaw)
-                                o2, d2 = pixel_to_ray_odom(px2, py2, rx, ry, yaw)
+                                o1, d1 = pixel_to_ray_odom(
+                                    px1, py1, prev_rx, prev_ry, prev_yaw
+                                )
+                                o2, d2 = pixel_to_ray_odom(
+                                    px2, py2, rx, ry, yaw
+                                )
 
                                 angle = angle_between_rays(d1, d2)
                                 if angle < MIN_ANGLE_DEG:
                                     continue
 
-                                midpoint = closest_approach_midpoint(o1, d1, o2, d2)
+                                midpoint = closest_approach_midpoint(
+                                    o1, d1, o2, d2
+                                )
                                 if midpoint is None:
                                     continue
 
@@ -464,11 +487,13 @@ class FrameProcessor(Node):
             f'({loop_elapsed/60:.2f} min)'
         )
 
-        # DBSCAN clustering
+        # DBSCAN clustering -> final object positions
         object_stack = {}
         for label, candidates in candidate_stack.items():
             entries = cluster_candidates(candidates, label)
             object_stack.update(entries)
+
+        object_stack = filter_object_stack(object_stack)
 
         for label, data in object_stack.items():
             self.get_logger().info(
@@ -477,20 +502,22 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack3.json')
+        json_path = os.path.join(output_dir, 'object_stack5.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
 
         # Save robot path
         robot_path_data = {'x': robot_x_list, 'y': robot_y_list}
-        robot_path_json = os.path.join(output_dir, 'robot_path3.json')
+        robot_path_json = os.path.join(output_dir, 'robot_path5.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.get_logger().info(f'Robot path saved to: {robot_path_json}')
 
         # Save map plot
-        plot_path = save_map_plot(object_stack, output_dir, robot_x_list, robot_y_list)
+        plot_path = save_map_plot(
+            object_stack, output_dir, robot_x_list, robot_y_list
+        )
         self.get_logger().info(f'Map plot saved to: {plot_path}')
 
 
