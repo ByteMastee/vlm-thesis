@@ -24,7 +24,7 @@ TF_TOPIC = '/tf'
 FRAME_SKIP = 12
 CONFIDENCE = 0.45
 MODEL_PATH = '/root/yolo26m.pt'
-RAY_LENGTH = 5.0
+RAY_LENGTH = 10.0
 
 # Camera intrinsics
 FX = 28.00600204423685
@@ -132,7 +132,7 @@ class RayVisualizer(Node):
         latest_odom = None
         marker_id = 0
         marker_array = MarkerArray()
-        PUBLISH_DELAY = 4.0 #time between each frame rays
+        PUBLISH_DELAY = 1.5 #time between each frame rays
 
         while reader.has_next():
             topic, data, timestamp = reader.read_next()

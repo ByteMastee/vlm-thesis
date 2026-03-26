@@ -204,7 +204,7 @@ def save_map_plot(object_stack, output_dir):
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot_final5.png')
+    plot_path = os.path.join(output_dir, 'map_plot1.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -221,7 +221,7 @@ class FrameProcessor(Node):
         self.declare_parameter('frame_skip', 12)
         self.declare_parameter('confidence', 0.45)
         self.declare_parameter('model_path', '/root/yolo26m.pt')
-        self.declare_parameter('output_dir', '/root/UVC_ws/vf_robot_model_ros2/pp_output')
+        self.declare_parameter('output_dir', '/root/UVC_ws/vf_robot_model_ros2/pp_tunning')
 
         bag_path = self.get_parameter('bag_path').value
         image_topic = self.get_parameter('image_topic').value
@@ -376,7 +376,7 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack_newUpd5.json')
+        json_path = os.path.join(output_dir, 'object_stack1.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
