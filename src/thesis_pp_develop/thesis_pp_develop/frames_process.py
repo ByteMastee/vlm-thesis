@@ -5,6 +5,7 @@ import time
 import json
 import cv2
 import numpy as np
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -157,8 +158,14 @@ def cluster_candidates(candidates, label):
     return object_entries
 
 
-def save_map_plot(object_stack, output_dir):
+def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.figure(figsize=(10, 10))
+
+    # Plot robot trajectory
+    if robot_x and robot_y:
+        plt.plot(robot_x, robot_y, 'b-', linewidth=1.0, alpha=0.5)
+        plt.plot(robot_x[0], robot_y[0], 'go', markersize=8)
+        plt.plot(robot_x[-1], robot_y[-1], 'rs', markersize=8)
 
     # Plot ground truth
     for label, (gx, gy) in GROUND_TRUTH.items():
@@ -195,12 +202,19 @@ def save_map_plot(object_stack, output_dir):
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
     plt.title('Semantic Map — Detected vs Ground Truth')
+    
     plt.legend(handles=[
         plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                    markersize=10, label='Ground Truth'),
         plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='red',
-                   markersize=10, label='Detected')
+                   markersize=10, label='Detected'),
+        plt.Line2D([0], [0], color='blue', linewidth=1.0, label='Robot path'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green',
+                   markersize=8, label='Start'),
+        plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='red',
+                   markersize=8, label='End')
     ])
+    
     plt.grid(True)
     plt.axis('equal')
 
@@ -266,6 +280,7 @@ class FrameProcessor(Node):
 
         total_pairs_triangulated = 0
         total_pairs_skipped = 0
+        robot_x, robot_y = [], [] # For use in Robot Trajectory Plotting
 
         # --- Timer start ---
         loop_start_time = time.time()
@@ -275,6 +290,8 @@ class FrameProcessor(Node):
 
             if topic == odom_topic:
                 latest_odom = deserialize_message(data, odom_msg_type)
+                robot_x.append(latest_odom.pose.pose.position.x)
+                robot_y.append(latest_odom.pose.pose.position.y)
                 continue
 
             if topic != image_topic:
@@ -382,10 +399,17 @@ class FrameProcessor(Node):
         self.get_logger().info(f'Object stack saved to: {json_path}')
 
         # Save map plot
-        plot_path = save_map_plot(object_stack, output_dir)
+        plot_path = save_map_plot(object_stack, output_dir, robot_x, robot_y)
         self.get_logger().info(f'Map plot saved to: {plot_path}')
 
+        # Save robot path for RViz
+        robot_path_data = {'x': robot_x, 'y': robot_y}
+        robot_path_json = os.path.join(output_dir, 'robot_path.json')
+        with open(robot_path_json, 'w') as f:
+            json.dump(robot_path_data, f)
+        self.get_logger().info(f'Robot path saved to: {robot_path_json}')
 
+        
 def main(args=None):
     rclpy.init(args=args)
     node = FrameProcessor()

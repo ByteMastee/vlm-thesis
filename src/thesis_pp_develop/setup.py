@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'frame_processing_node = thesis_pp_develop.frames_process:main',
             'ray_visualizing_node = thesis_pp_develop.ray_visualizer:main',
+            'rviz_map_publish_node = thesis_pp_develop.rviz_map_publisher:main',
         ],
     },
 )
