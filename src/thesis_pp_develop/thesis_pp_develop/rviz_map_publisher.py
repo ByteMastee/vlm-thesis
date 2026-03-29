@@ -26,9 +26,9 @@ class RvizMapPublisher(Node):
         super().__init__('rviz_map_publish_node')
 
         self.declare_parameter('object_stack_path',
-                               '/root/UVC_ws/vf_robot_model_ros2/pp_tunning/object_stack1.json')
+                               '/root/UVC_ws/vf_robot_model_ros2/pp_tunning/object_stack5.json')
         self.declare_parameter('robot_odom_path',
-                               '/root/UVC_ws/vf_robot_model_ros2/pp_tunning/robot_path.json')
+                               '/root/UVC_ws/vf_robot_model_ros2/pp_tunning/robot_path5.json')
 
         self.static_broadcaster = StaticTransformBroadcaster(self)
 
