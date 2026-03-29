@@ -193,7 +193,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot_depth4.png')
+    plot_path = os.path.join(output_dir, 'map_plot_depth5.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -398,7 +398,7 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack_depth4.json')
+        json_path = os.path.join(output_dir, 'object_stack_depth5.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
