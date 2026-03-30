@@ -5,12 +5,15 @@ import time
 import json
 import cv2
 import numpy as np
+import torch
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from sklearn.cluster import DBSCAN
+from PIL import Image
+from sklearn.cluster import HDBSCAN
+from depth_anything_3.api import DepthAnything3
 
 import rclpy
 from rclpy.node import Node
@@ -33,15 +36,22 @@ R_optical_to_base = np.array([
     [ 8.08938852e-01, -2.06360874e-02, -5.87530498e-01]
 ])
 
-# Camera offset from base_link
+# Camera translation: optical_frame -> base_link
 T_CAM_OFFSET = np.array([0.07, 0.0, 1.845])
 
-# Triangulation parameters
-MIN_ANGLE_DEG = 10.0
+# DA3METRIC-LARGE model path (copied into container)
+DEPTH_MODEL_PATH = 'depth-anything/DA3METRIC-LARGE'
 
-# DBSCAN parameters
-DBSCAN_EPS = 1.0
-DBSCAN_MIN_SAMPLES = 3
+# Minimum bounding box area to use depth (pixels squared)
+MIN_BBOX_AREA = 1800
+
+# Depth clip range (meters)
+DEPTH_MIN = 0.1
+DEPTH_MAX = 8.0
+
+# HDBSCAN parameters
+HDBSCAN_MIN_CLUSTER_SIZE = 3
+HDBSCAN_MIN_SAMPLES = 2
 
 # Ground truth from Gazebo world file
 GROUND_TRUTH = {
@@ -52,15 +62,13 @@ GROUND_TRUTH = {
 }
 
 
-def pixel_to_ray_odom(cx, cy, robot_x, robot_y, yaw):
-    x = (cx - CX_0) / FX
-    y = (cy - CY_0) / FY
-    z = 1.0
-    ray_cam = np.array([x, y, z])
-    ray_cam = ray_cam / np.linalg.norm(ray_cam)
+def depth_to_3d_odom(cx, cy, depth_m, robot_x, robot_y, yaw):
+    x_cam = (cx - CX_0) * depth_m / FX
+    y_cam = (cy - CY_0) * depth_m / FY
+    z_cam = depth_m
+    point_cam = np.array([x_cam, y_cam, z_cam])
 
-    ray_base = R_optical_to_base @ ray_cam
-    ray_base = ray_base / np.linalg.norm(ray_base)
+    point_base = R_optical_to_base @ point_cam + T_CAM_OFFSET
 
     c, s = np.cos(yaw), np.sin(yaw)
     R_yaw = np.array([
@@ -68,48 +76,11 @@ def pixel_to_ray_odom(cx, cy, robot_x, robot_y, yaw):
         [s,  c, 0],
         [0,  0, 1]
     ])
-    ray_odom = R_yaw @ ray_base
-    ray_odom = ray_odom / np.linalg.norm(ray_odom)
+    point_odom = R_yaw @ point_base
+    point_odom[0] += robot_x
+    point_odom[1] += robot_y
 
-    R2d = np.array([[c, -s], [s, c]])
-    cam_offset_rotated = R2d @ T_CAM_OFFSET[:2]
-    origin = np.array([
-        robot_x + cam_offset_rotated[0],
-        robot_y + cam_offset_rotated[1],
-        T_CAM_OFFSET[2]
-    ])
-
-    return origin, ray_odom
-
-
-def angle_between_rays(d1, d2):
-    cos_angle = np.clip(np.dot(d1, d2), -1.0, 1.0)
-    return np.degrees(np.arccos(cos_angle))
-
-
-def closest_approach_midpoint(o1, d1, o2, d2):
-    w0 = o1 - o2
-    a = np.dot(d1, d1)
-    b = np.dot(d1, d2)
-    c = np.dot(d2, d2)
-    d = np.dot(d1, w0)
-    e = np.dot(d2, w0)
-
-    denom = a * c - b * b
-    if abs(denom) < 1e-6:
-        return None
-
-    t1 = (b * e - c * d) / denom
-    t2 = (a * e - b * d) / denom
-
-    if t1 < 0 or t2 < 0:
-        return None
-
-    p1 = o1 + t1 * d1
-    p2 = o2 + t2 * d2
-    midpoint = (p1 + p2) / 2.0
-
-    return midpoint
+    return point_odom
 
 
 def cluster_candidates(candidates, label):
@@ -120,7 +91,7 @@ def cluster_candidates(candidates, label):
 
     pts = np.array(candidates)
 
-    if len(pts) < DBSCAN_MIN_SAMPLES:
+    if len(pts) < HDBSCAN_MIN_CLUSTER_SIZE:
         final_x = float(np.median(pts[:, 0]))
         final_y = float(np.median(pts[:, 1]))
         object_entries[label] = {
@@ -130,13 +101,23 @@ def cluster_candidates(candidates, label):
         }
         return object_entries
 
-    db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(pts)
-    labels_db = db.labels_
+    hdb = HDBSCAN(
+        min_cluster_size=HDBSCAN_MIN_CLUSTER_SIZE,
+        min_samples=HDBSCAN_MIN_SAMPLES
+    ).fit(pts)
+    labels_db = hdb.labels_
 
     unique_clusters = set(labels_db)
     unique_clusters.discard(-1)
 
     if len(unique_clusters) == 0:
+        final_x = float(np.median(pts[:, 0]))
+        final_y = float(np.median(pts[:, 1]))
+        object_entries[label] = {
+            'x': round(final_x, 4),
+            'y': round(final_y, 4),
+            'num_candidates': len(pts)
+        }
         return object_entries
 
     for cluster_id in sorted(unique_clusters):
@@ -161,20 +142,17 @@ def cluster_candidates(candidates, label):
 def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
     plt.figure(figsize=(10, 10))
 
-    # Plot robot trajectory
     if robot_x and robot_y:
         plt.plot(robot_x, robot_y, 'b-', linewidth=1.0, alpha=0.5)
         plt.plot(robot_x[0], robot_y[0], 'go', markersize=8)
         plt.plot(robot_x[-1], robot_y[-1], 'rs', markersize=8)
 
-    # Plot ground truth
     for label, (gx, gy) in GROUND_TRUTH.items():
         plt.plot(gx, gy, 'g^', markersize=12)
         plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
                      textcoords='offset points', xytext=(8, 8),
                      fontsize=9, color='green')
 
-    # Plot detected object stack
     colors = ['red', 'orange', 'purple', 'cyan', 'magenta']
     for i, (label, data) in enumerate(object_stack.items()):
         ox = data['x']
@@ -185,7 +163,6 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
                      textcoords='offset points', xytext=(8, -18),
                      fontsize=9, color=color)
 
-        # Draw error line to nearest GT
         best_dist = float('inf')
         best_gx, best_gy = None, None
         for gt_label, (gx, gy) in GROUND_TRUTH.items():
@@ -201,8 +178,7 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
 
     plt.xlabel('X (m)')
     plt.ylabel('Y (m)')
-    plt.title('Semantic Map — Detected vs Ground Truth')
-    
+    plt.title('Semantic Map — Detected vs Ground Truth (DA3METRIC-LARGE + HDBSCAN)')
     plt.legend(handles=[
         plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                    markersize=10, label='Ground Truth'),
@@ -214,11 +190,10 @@ def save_map_plot(object_stack, output_dir, robot_x=None, robot_y=None):
         plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='red',
                    markersize=8, label='End')
     ])
-    
     plt.grid(True)
     plt.axis('equal')
 
-    plot_path = os.path.join(output_dir, 'map_plot_afterD1.png')
+    plot_path = os.path.join(output_dir, 'map_plot3.png')
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
@@ -235,23 +210,33 @@ class FrameProcessor(Node):
         self.declare_parameter('frame_skip', 12)
         self.declare_parameter('confidence', 0.45)
         self.declare_parameter('model_path', '/root/yolo26m.pt')
-        self.declare_parameter('output_dir', '/root/UVC_ws/vf_robot_model_ros2/pp_tunning3')
+        self.declare_parameter('output_dir', '/root/UVC_ws/vf_robot_model_ros2/pp_da3tuning')
 
-        bag_path = self.get_parameter('bag_path').value
+        bag_path    = self.get_parameter('bag_path').value
         image_topic = self.get_parameter('image_topic').value
-        odom_topic = self.get_parameter('odom_topic').value
-        frame_skip = self.get_parameter('frame_skip').value
-        confidence = self.get_parameter('confidence').value
-        model_path = self.get_parameter('model_path').value
-        output_dir = self.get_parameter('output_dir').value
+        odom_topic  = self.get_parameter('odom_topic').value
+        frame_skip  = self.get_parameter('frame_skip').value
+        confidence  = self.get_parameter('confidence').value
+        model_path  = self.get_parameter('model_path').value
+        output_dir  = self.get_parameter('output_dir').value
 
         os.makedirs(output_dir, exist_ok=True)
 
         self.get_logger().info(f'Reading bag: {bag_path}')
         self.get_logger().info(f'Frame skip: {frame_skip}')
         self.get_logger().info(f'Loading YOLO model: {model_path}')
+        self.get_logger().info(f'Loading DA3METRIC-LARGE from: {DEPTH_MODEL_PATH}')
+        self.get_logger().info(f'Depth clip range: {DEPTH_MIN}m to {DEPTH_MAX}m')
 
-        model = YOLO(model_path)
+        # Load YOLO
+        yolo_model = YOLO(model_path)
+
+        # Load DA3METRIC-LARGE via depth_anything_3 API
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        depth_model = DepthAnything3.from_pretrained(DEPTH_MODEL_PATH)
+        depth_model = depth_model.to(device)
+        depth_model.eval()
+        self.get_logger().info(f'DA3METRIC-LARGE loaded on: {device}')
 
         storage_options = rosbag2_py.StorageOptions(uri=bag_path, storage_id='sqlite3')
         converter_options = rosbag2_py.ConverterOptions(
@@ -269,20 +254,17 @@ class FrameProcessor(Node):
         reader.set_filter(storage_filter)
 
         image_msg_type = get_message(type_map[image_topic])
-        odom_msg_type = get_message(type_map[odom_topic])
+        odom_msg_type  = get_message(type_map[odom_topic])
 
-        frame_count = 0
-        process_count = 0
-        latest_odom = None
+        frame_count      = 0
+        process_count    = 0
+        depth_used_count = 0
+        bbox_skip_count  = 0
+        latest_odom      = None
 
-        ray_stack = {}
         candidate_stack = {}
+        robot_x_list, robot_y_list = [], []
 
-        total_pairs_triangulated = 0
-        total_pairs_skipped = 0
-        robot_x, robot_y = [], [] # For use in Robot Trajectory Plotting
-
-        # --- Timer start ---
         loop_start_time = time.time()
 
         while reader.has_next():
@@ -290,8 +272,8 @@ class FrameProcessor(Node):
 
             if topic == odom_topic:
                 latest_odom = deserialize_message(data, odom_msg_type)
-                robot_x.append(latest_odom.pose.pose.position.x)
-                robot_y.append(latest_odom.pose.pose.position.y)
+                robot_x_list.append(latest_odom.pose.pose.position.x)
+                robot_y_list.append(latest_odom.pose.pose.position.y)
                 continue
 
             if topic != image_topic:
@@ -314,51 +296,80 @@ class FrameProcessor(Node):
                     frame_count += 1
                     continue
 
-                results = model(img, conf=confidence, verbose=False)
+                yolo_results = yolo_model(img, conf=confidence, verbose=False)
 
-                rx = latest_odom.pose.pose.position.x
-                ry = latest_odom.pose.pose.position.y
-                q = latest_odom.pose.pose.orientation
+                rx  = latest_odom.pose.pose.position.x
+                ry  = latest_odom.pose.pose.position.y
+                q   = latest_odom.pose.pose.orientation
                 yaw = np.arctan2(
-                    2*(q.w*q.z + q.x*q.y),
-                    1 - 2*(q.y**2 + q.z**2)
+                    2 * (q.w * q.z + q.x * q.y),
+                    1 - 2 * (q.y**2 + q.z**2)
                 )
 
-                for result in results:
+                # Check if any detection passes bbox area filter
+                valid_detections = []
+                for result in yolo_results:
                     for box in result.boxes:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        cls_id = int(box.cls[0])
-                        label = model.names[cls_id]
-                        cx = (x1 + x2) // 2
-                        cy = (y1 + y2) // 2
+                        bbox_area = (x2 - x1) * (y2 - y1)
+                        if bbox_area >= MIN_BBOX_AREA:
+                            cls_id = int(box.cls[0])
+                            label  = yolo_model.names[cls_id]
+                            cx = (x1 + x2) // 2
+                            cy = (y1 + y2) // 2
+                            valid_detections.append((label, cx, cy, bbox_area))
+                        else:
+                            bbox_skip_count += 1
 
-                        origin, ray = pixel_to_ray_odom(cx, cy, rx, ry, yaw)
+                if len(valid_detections) > 0:
+                    # Convert BGR to RGB PIL image for DA3
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(img_rgb)
 
-                        if label not in ray_stack:
-                            ray_stack[label] = []
+                    # Run DA3METRIC-LARGE inference
+                    # inference() returns a prediction object with .depth [N, H, W]
+                    with torch.no_grad():
+                        prediction = depth_model.inference([pil_img])
+
+                    # Extract depth map for first (only) image, shape: (H, W)
+                    depth_map = prediction.depth[0]
+
+                    # Resize depth map to original image size if needed
+                    if depth_map.shape != (msg.height, msg.width):
+                        depth_map = cv2.resize(
+                            depth_map,
+                            (msg.width, msg.height),
+                            interpolation=cv2.INTER_LINEAR
+                        )
+
+                    # Process each valid detection
+                    for label, cx, cy, bbox_area in valid_detections:
+                        depth_m = float(depth_map[cy, cx])
+
+                        self.get_logger().info(
+                            f'RAW DEPTH | {label} | depth: {depth_m:.4f}m | '
+                            f'depth_map min: {depth_map.min():.4f} max: {depth_map.max():.4f}'
+                        )
+
+                        if depth_m <= DEPTH_MIN or depth_m > DEPTH_MAX:
+                            continue
+
+                        point_odom = depth_to_3d_odom(cx, cy, depth_m, rx, ry, yaw)
+
                         if label not in candidate_stack:
                             candidate_stack[label] = []
 
-                        for prev_origin, prev_ray in ray_stack[label]:
-                            angle = angle_between_rays(ray, prev_ray)
+                        candidate_stack[label].append(
+                            (point_odom[0], point_odom[1])
+                        )
+                        depth_used_count += 1
 
-                            if angle < MIN_ANGLE_DEG:
-                                total_pairs_skipped += 1
-                                continue
-
-                            midpoint = closest_approach_midpoint(
-                                prev_origin, prev_ray, origin, ray
-                            )
-
-                            if midpoint is None:
-                                continue
-
-                            candidate_stack[label].append(
-                                (midpoint[0], midpoint[1])
-                            )
-                            total_pairs_triangulated += 1
-
-                        ray_stack[label].append((origin, ray))
+                        self.get_logger().info(
+                            f'Frame {frame_count} | {label} | '
+                            f'bbox_area: {bbox_area} | '
+                            f'depth: {depth_m:.3f}m | '
+                            f'3D: ({point_odom[0]:.3f}, {point_odom[1]:.3f})'
+                        )
 
                 process_count += 1
                 self.get_logger().info(
@@ -368,19 +379,18 @@ class FrameProcessor(Node):
 
             frame_count += 1
 
-        # --- Timer end ---
         loop_elapsed = time.time() - loop_start_time
 
         self.get_logger().info(f'Total frames in bag: {frame_count}')
         self.get_logger().info(f'Frames processed: {process_count}')
-        self.get_logger().info(f'Pairs triangulated: {total_pairs_triangulated}')
-        self.get_logger().info(f'Pairs skipped: {total_pairs_skipped}')
+        self.get_logger().info(f'Depth points used: {depth_used_count}')
+        self.get_logger().info(f'Detections skipped (small bbox): {bbox_skip_count}')
         self.get_logger().info(
             f'Processing loop time: {loop_elapsed:.3f}s '
             f'({loop_elapsed/60:.2f} min)'
         )
 
-        # DBSCAN clustering -> object stack
+        # HDBSCAN clustering -> object stack
         object_stack = {}
         for label, candidates in candidate_stack.items():
             entries = cluster_candidates(candidates, label)
@@ -393,22 +403,25 @@ class FrameProcessor(Node):
             )
 
         # Save object stack
-        json_path = os.path.join(output_dir, 'object_stack_afterD1.json')
+        json_path = os.path.join(output_dir, 'object_stack3.json')
         with open(json_path, 'w') as f:
             json.dump(object_stack, f, indent=2)
         self.get_logger().info(f'Object stack saved to: {json_path}')
 
-        # Save map plot
-        plot_path = save_map_plot(object_stack, output_dir, robot_x, robot_y)
-        self.get_logger().info(f'Map plot saved to: {plot_path}')
-
-        # Save robot path for RViz
-        robot_path_data = {'x': robot_x, 'y': robot_y}
-        robot_path_json = os.path.join(output_dir, 'robot_path1.json')
+        # Save robot path
+        robot_path_data = {'x': robot_x_list, 'y': robot_y_list}
+        robot_path_json = os.path.join(output_dir, 'robot_path3.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.get_logger().info(f'Robot path saved to: {robot_path_json}')
-        
+
+        # Save map plot
+        plot_path = save_map_plot(
+            object_stack, output_dir, robot_x_list, robot_y_list
+        )
+        self.get_logger().info(f'Map plot saved to: {plot_path}')
+
+
 def main(args=None):
     rclpy.init(args=args)
     node = FrameProcessor()
