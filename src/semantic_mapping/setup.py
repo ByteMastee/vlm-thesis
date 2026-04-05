@@ -25,6 +25,7 @@ setup(
             'ros_node = semantic_mapping.ros_node:main',
             'yolo_map_node = semantic_mapping.yolo_map_node:main',
             'rviz_publisher_node = semantic_mapping.rviz_publisher_node:main',
+            'multi_run_visualizer = semantic_mapping.multi_run_visualizer:main',
         ],
     },
 )
