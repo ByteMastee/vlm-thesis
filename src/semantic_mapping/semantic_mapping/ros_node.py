@@ -22,7 +22,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('tf_topic',           '/tf')
         self.declare_parameter('tf_static_topic',    '/tf_static')
         self.declare_parameter('frame_skip',         12)
-        self.declare_parameter('confidence',         0.45)
+        self.declare_parameter('confidence',         0.48)
         self.declare_parameter('model_path',         '/root/yolo26m.pt')
         self.declare_parameter('output_dir',         '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output')
         self.declare_parameter('min_angle_deg',      5.0)
@@ -30,7 +30,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('dbscan_min_samples', 3)
         self.declare_parameter('ray_length',         10.0)
         self.declare_parameter('process_delay',      105.0)
-        self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
+        #self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
         image_topic     = self.get_parameter('image_topic').value
         cam_info_topic  = self.get_parameter('cam_info_topic').value
@@ -48,11 +48,11 @@ class RosBridgeNode(Node):
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
 
-        gt_raw = self.get_parameter('ground_truth').value
+        #gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
-        for entry in gt_raw:
-            parts = entry.split(':')
-            self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
+        #for entry in gt_raw:
+            #parts = entry.split(':')
+            #self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -147,6 +147,7 @@ class RosBridgeNode(Node):
             return
 
         if self.frame_count % self.frame_skip == 0:
+
             self.collected_frames.append((msg, self.latest_odom))
             self.get_logger().info(
                 f'Frame {self.frame_count} collected — total: {len(self.collected_frames)}'
