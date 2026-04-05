@@ -1,4 +1,5 @@
 import os
+import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
@@ -30,7 +31,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('dbscan_min_samples', 3)
         self.declare_parameter('ray_length',         10.0)
         self.declare_parameter('process_delay',      105.0)
-        #self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
+        self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
         image_topic     = self.get_parameter('image_topic').value
         cam_info_topic  = self.get_parameter('cam_info_topic').value
@@ -48,11 +49,13 @@ class RosBridgeNode(Node):
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
 
-        #gt_raw = self.get_parameter('ground_truth').value
+        self.total_compute_time = 0.0
+
+        gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
-        #for entry in gt_raw:
-            #parts = entry.split(':')
-            #self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
+        for entry in gt_raw:
+            parts = entry.split(':')
+            self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -62,21 +65,20 @@ class RosBridgeNode(Node):
         self.is_calibrated    = False
         self.tf_static_msg    = None
         self.frame_count      = 0
-        self.collected_frames = []
+        self.processed_count  = 0
         self.process_done     = False
+        self.total_start_time = None
 
         # --- Functional nodes ---
         self.yolo_map_node  = None
         self.rviz_publisher = None
 
-        # --- QoS for tf_static ---
+        # --- QoS ---
         tf_static_qos = QoSProfile(
             depth=100,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             reliability=ReliabilityPolicy.RELIABLE
         )
-
-        # --- QoS for marker publisher (latched) ---
         latched_qos = QoSProfile(
             depth=1,
             durability=DurabilityPolicy.TRANSIENT_LOCAL
@@ -146,12 +148,30 @@ class RosBridgeNode(Node):
         if self.latest_odom is None:
             return
 
-        if self.frame_count % self.frame_skip == 0:
+        if self.yolo_map_node is None:
+            return
 
-            self.collected_frames.append((msg, self.latest_odom))
-            self.get_logger().info(
-                f'Frame {self.frame_count} collected — total: {len(self.collected_frames)}'
-            )
+        if self.frame_count % self.frame_skip != 0:
+            return
+
+        # --- Start total timer on first processed frame ---
+        if self.total_start_time is None:
+            self.total_start_time = time.time()
+
+        # --- Per-frame timer ---
+        frame_start = time.time()
+
+        self.yolo_map_node.process_frame(msg, self.latest_odom)
+
+        frame_elapsed = time.time() - frame_start
+        self.processed_count += 1
+        self.total_compute_time += frame_elapsed
+
+        self.get_logger().info(
+            f'Frame {self.frame_count} processed | '
+            f'count: {self.processed_count} | '
+            f'time: {frame_elapsed:.3f}s'
+        )
 
     def odom_cb(self, msg):
         self.latest_odom = msg
@@ -176,17 +196,21 @@ class RosBridgeNode(Node):
             self.get_logger().warn('Process triggered — camera not calibrated, aborting.')
             return
 
-        if len(self.collected_frames) == 0:
-            self.get_logger().warn('Process triggered — no frames collected, aborting.')
+        if self.processed_count == 0:
+            self.get_logger().warn('Process triggered — no frames processed, aborting.')
             return
 
-        self.get_logger().info(
-            f'Process triggered — {len(self.collected_frames)} frames to process.'
-        )
-
-        for i, (image_msg, odom_msg) in enumerate(self.collected_frames):
-            self.yolo_map_node.process_frame(image_msg, odom_msg)
-            self.get_logger().info(f'Processed frame {i+1}/{len(self.collected_frames)}')
+        # --- Total time ---
+        if self.total_start_time is not None:
+            total_elapsed = time.time() - self.total_start_time
+            self.get_logger().info(
+                f'Total processing time: {total_elapsed:.3f}s '
+                f'({total_elapsed/60:.2f} min) for {self.processed_count} frames'
+            )
+            self.get_logger().info(
+                f'Pure compute time: {self.total_compute_time:.3f}s for {self.processed_count} frames | '
+                f'avg per frame: {self.total_compute_time/self.processed_count:.4f}s'
+            )
 
         object_stack = self.yolo_map_node.get_object_stack()
         self.get_logger().info(f'Object stack: {list(object_stack.keys())}')
@@ -207,7 +231,9 @@ class RosBridgeNode(Node):
         )
 
         self.marker_pub.publish(marker_array)
-        self.get_logger().info(f'Markers published to /semantic_map_markers — {len(marker_array.markers)} markers.')
+        self.get_logger().info(
+            f'Markers published to /semantic_map_markers — {len(marker_array.markers)} markers.'
+        )
 
         self.get_logger().info('Processing complete.')
 
