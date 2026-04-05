@@ -23,24 +23,24 @@ class YoloMapNode:
         ground_truth,
         logger
     ):
-        self.confidence       = confidence
-        self.fx               = fx
-        self.fy               = fy
-        self.cx               = cx
-        self.cy               = cy
-        self.min_angle_deg    = min_angle_deg
-        self.dbscan_eps       = dbscan_eps
+        self.confidence         = confidence
+        self.fx                 = fx
+        self.fy                 = fy
+        self.cx                 = cx
+        self.cy                 = cy
+        self.min_angle_deg      = min_angle_deg
+        self.dbscan_eps         = dbscan_eps
         self.dbscan_min_samples = dbscan_min_samples
-        self.output_dir       = output_dir
-        self.ground_truth     = ground_truth
-        self.logger           = logger
+        self.output_dir         = output_dir
+        self.ground_truth       = ground_truth
+        self.logger             = logger
 
         self.R_optical_to_base = None
         self.T_cam_offset      = None
 
-        self.ray_stack       = {}
-        self.candidate_stack = {}
-        self.object_stack    = {}
+        self.ray_stack         = {}
+        self.candidate_stack   = {}
+        self.object_stack      = {}
 
         self.robot_x = []
         self.robot_y = []
@@ -70,8 +70,8 @@ class YoloMapNode:
 
         T1 = self._tf_to_matrix(tf_map[key1])
         T2 = self._tf_to_matrix(tf_map[key2])
-        T_base_to_optical  = T1 @ T2
-        T_optical_to_base  = np.linalg.inv(T_base_to_optical)
+        T_base_to_optical = T1 @ T2
+        T_optical_to_base = np.linalg.inv(T_base_to_optical)
 
         self.R_optical_to_base = T_optical_to_base[:3, :3]
         self.T_cam_offset      = T_base_to_optical[:3, 3]
@@ -79,19 +79,28 @@ class YoloMapNode:
         self.logger.info('TF static set — R_optical_to_base and T_cam_offset computed.')
 
     def process_frame(self, image_msg, odom_msg):
+        """
+        Returns:
+            rx, ry          — robot position
+            frame_rays      — list of (origin, ray) for this frame
+            frame_candidates — list of (x, y) new candidates from this frame
+        """
         if self.R_optical_to_base is None:
             self.logger.warn('TF static not set yet — skipping frame.')
-            return
+            return None, None, None, None
 
         img = self._decode_image(image_msg)
         if img is None:
-            return
+            return None, None, None, None
 
         rx, ry, yaw = self._extract_odom(odom_msg)
         self.robot_x.append(rx)
         self.robot_y.append(ry)
 
         results = self.model(img, conf=self.confidence, verbose=False)
+
+        frame_rays       = []
+        frame_candidates = []
 
         for result in results:
             for box in result.boxes:
@@ -102,6 +111,7 @@ class YoloMapNode:
                 px_cy  = (y1 + y2) // 2
 
                 origin, ray = self._pixel_to_ray_odom(px_cx, px_cy, rx, ry, yaw)
+                frame_rays.append((origin, ray))
 
                 if label not in self.ray_stack:
                     self.ray_stack[label]       = []
@@ -122,9 +132,12 @@ class YoloMapNode:
                         continue
 
                     self.candidate_stack[label].append((midpoint[0], midpoint[1]))
+                    frame_candidates.append((midpoint[0], midpoint[1]))
                     self.total_triangulated += 1
 
                 self.ray_stack[label].append((origin, ray))
+
+        return rx, ry, frame_rays, frame_candidates
 
     def get_object_stack(self):
         self.object_stack = {}
@@ -133,21 +146,24 @@ class YoloMapNode:
             self.object_stack.update(entries)
         return self.object_stack
 
+    def get_all_candidates(self):
+        all_candidates = []
+        for candidates in self.candidate_stack.values():
+            all_candidates.extend(candidates)
+        return all_candidates
+
     def save_outputs(self):
-        # Save object stack JSON
-        json_path = os.path.join(self.output_dir, 'object_stack2.json')
+        json_path = os.path.join(self.output_dir, 'object_stack.json')
         with open(json_path, 'w') as f:
             json.dump(self.object_stack, f, indent=2)
         self.logger.info(f'Object stack saved: {json_path}')
 
-        # Save robot path JSON
         robot_path_data = {'x': self.robot_x, 'y': self.robot_y}
-        robot_path_json = os.path.join(self.output_dir, 'robot_path2.json')
+        robot_path_json = os.path.join(self.output_dir, 'robot_path.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.logger.info(f'Robot path saved: {robot_path_json}')
 
-        # Save map plot
         plot_path = self._save_map_plot()
         self.logger.info(f'Map plot saved: {plot_path}')
 
@@ -289,7 +305,7 @@ class YoloMapNode:
             transform.translation.y,
             transform.translation.z
         ])
-        T      = np.eye(4)
+        T         = np.eye(4)
         T[:3, :3] = R
         T[:3, 3]  = t
         return T
@@ -356,7 +372,7 @@ class YoloMapNode:
         plt.grid(True)
         plt.axis('equal')
 
-        plot_path = os.path.join(self.output_dir, 'map_plot2.png')
+        plot_path = os.path.join(self.output_dir, 'map_plot.png')
         plt.savefig(plot_path, dpi=150)
         plt.close()
         return plot_path

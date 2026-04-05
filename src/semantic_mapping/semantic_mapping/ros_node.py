@@ -49,8 +49,6 @@ class RosBridgeNode(Node):
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
 
-        self.total_compute_time = 0.0
-
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
         for entry in gt_raw:
@@ -60,14 +58,16 @@ class RosBridgeNode(Node):
         os.makedirs(self.output_dir, exist_ok=True)
 
         # --- State ---
-        self.latest_odom      = None
-        self.cam_info         = None
-        self.is_calibrated    = False
-        self.tf_static_msg    = None
-        self.frame_count      = 0
-        self.processed_count  = 0
-        self.process_done     = False
-        self.total_start_time = None
+        self.latest_odom        = None
+        self.cam_info           = None
+        self.is_calibrated      = False
+        self.tf_static_msg      = None
+        self.frame_count        = 0
+        self.processed_count    = 0
+        self.process_done       = False
+        self.total_start_time   = None
+        self.total_compute_time = 0.0
+        self.gt_published       = False
 
         # --- Functional nodes ---
         self.yolo_map_node  = None
@@ -84,8 +84,9 @@ class RosBridgeNode(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL
         )
 
-        # --- Publisher ---
-        self.marker_pub = self.create_publisher(MarkerArray, '/semantic_map_markers', latched_qos)
+        # --- Publishers ---
+        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers', latched_qos)
+        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',    10)
 
         # --- Subscribers ---
         self.create_subscription(CameraInfo, cam_info_topic,  self.cam_info_cb,  10)
@@ -137,6 +138,15 @@ class RosBridgeNode(Node):
         if self.tf_static_msg is not None:
             self.yolo_map_node.set_tf_static(self.tf_static_msg)
 
+        # --- Publish GT markers once ---
+        if self.ground_truth and not self.gt_published:
+            gt_markers = self.rviz_publisher.build_gt_markers(
+                self.ground_truth, self.get_clock()
+            )
+            self.marker_pub.publish(gt_markers)
+            self.gt_published = True
+            self.get_logger().info('GT markers published.')
+
         self.get_logger().info('Functional nodes initialized.')
 
     def image_cb(self, msg):
@@ -154,17 +164,17 @@ class RosBridgeNode(Node):
         if self.frame_count % self.frame_skip != 0:
             return
 
-        # --- Start total timer on first processed frame ---
         if self.total_start_time is None:
             self.total_start_time = time.time()
 
-        # --- Per-frame timer ---
         frame_start = time.time()
 
-        self.yolo_map_node.process_frame(msg, self.latest_odom)
+        rx, ry, frame_rays, frame_candidates = self.yolo_map_node.process_frame(
+            msg, self.latest_odom
+        )
 
         frame_elapsed = time.time() - frame_start
-        self.processed_count += 1
+        self.processed_count    += 1
         self.total_compute_time += frame_elapsed
 
         self.get_logger().info(
@@ -172,6 +182,26 @@ class RosBridgeNode(Node):
             f'count: {self.processed_count} | '
             f'time: {frame_elapsed:.3f}s'
         )
+
+        if rx is None:
+            return
+
+        # --- Live RViz publish ---
+        all_candidates = self.yolo_map_node.get_all_candidates()
+
+        rays_with_length = [
+            (origin, ray, self.ray_length) for origin, ray in frame_rays
+        ]
+
+        live_markers = self.rviz_publisher.build_live_markers(
+            robot_x=rx,
+            robot_y=ry,
+            rays=rays_with_length,
+            candidates=all_candidates,
+            clock=self.get_clock()
+        )
+
+        self.live_marker_pub.publish(live_markers)
 
     def odom_cb(self, msg):
         self.latest_odom = msg
@@ -200,15 +230,14 @@ class RosBridgeNode(Node):
             self.get_logger().warn('Process triggered — no frames processed, aborting.')
             return
 
-        # --- Total time ---
         if self.total_start_time is not None:
             total_elapsed = time.time() - self.total_start_time
             self.get_logger().info(
-                f'Total processing time: {total_elapsed:.3f}s '
+                f'Total wall time: {total_elapsed:.3f}s '
                 f'({total_elapsed/60:.2f} min) for {self.processed_count} frames'
             )
             self.get_logger().info(
-                f'Pure compute time: {self.total_compute_time:.3f}s for {self.processed_count} frames | '
+                f'Pure compute time: {self.total_compute_time:.3f}s | '
                 f'avg per frame: {self.total_compute_time/self.processed_count:.4f}s'
             )
 
@@ -217,7 +246,6 @@ class RosBridgeNode(Node):
 
         self.yolo_map_node.save_outputs()
 
-        # --- Publish markers to RViz ---
         robot_path_data = {
             'x': self.yolo_map_node.robot_x,
             'y': self.yolo_map_node.robot_y
@@ -232,7 +260,7 @@ class RosBridgeNode(Node):
 
         self.marker_pub.publish(marker_array)
         self.get_logger().info(
-            f'Markers published to /semantic_map_markers — {len(marker_array.markers)} markers.'
+            f'Final markers published to /semantic_map_markers — {len(marker_array.markers)} markers.'
         )
 
         self.get_logger().info('Processing complete.')
