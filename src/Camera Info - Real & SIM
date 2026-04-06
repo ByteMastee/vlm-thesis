@@ -1,0 +1,121 @@
+# RECORDED FROM REAL WORLD ROBOT:
+
+ros2 topic echo /fisheye/front/fisheye_front/camera_info 
+header:
+  stamp:
+    sec: 1774956340
+    nanosec: 961668014
+  frame_id: fisheye_front_optical_frame
+height: 480
+width: 640
+distortion_model: equidistant
+d:
+- -0.05268338601520044
+- 0.004889702830369265
+- -0.0031745403716575385
+- 0.00015737212611983246
+k:
+- 271.7130252551282
+- 0.0
+- 320.79340187886527
+- 0.0
+- 272.1434051421597
+- 226.64923232430766
+- 0.0
+- 0.0
+- 1.0
+r:
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+p:
+- 252.0830841064453
+- 0.0
+- 321.147701029975
+- 0.0
+- 0.0
+- 260.4607849121094
+- 223.13973599103883
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+- 0.0
+binning_x: 0
+binning_y: 0
+roi:
+  x_offset: 0
+  y_offset: 0
+  height: 0
+  width: 0
+  do_rectify: false
+---
+
+
+
+RECORDED FROM SIMULATION ROBOT:
+
+ros2 topic echo /fisheye/front/fisheye_front/camera_info --once
+header:
+  stamp:
+    sec: 91
+    nanosec: 87000000
+  frame_id: camera_fisheye_front_optical_frame
+height: 480
+width: 640
+distortion_model: plumb_bob
+d:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+k:
+- 28.00600204423685
+- 0.0
+- 320.5
+- 0.0
+- 28.00600204423685
+- 240.5
+- 0.0
+- 0.0
+- 1.0
+r:
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+p:
+- 28.00600204423685
+- 0.0
+- 320.5
+- -0.0
+- 0.0
+- 28.00600204423685
+- 240.5
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+- 0.0
+binning_x: 0
+binning_y: 0
+roi:
+  x_offset: 0
+  y_offset: 0
+  height: 0
+  width: 0
+  do_rectify: false
+---
+

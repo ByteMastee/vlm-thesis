@@ -27,7 +27,10 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 
+# Suppress dev warning from Gazebo's cmake config (upstream bug: reports PkgConfig instead of gazebo)
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS TRUE CACHE INTERNAL "" FORCE)
 find_package(gazebo REQUIRED)
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS FALSE CACHE INTERNAL "" FORCE)
 find_package(gazebo_ros REQUIRED)
 find_package(gazebo_ros_pkgs REQUIRED)
 

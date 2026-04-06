@@ -124,14 +124,14 @@ class RvizPublisherNode:
             marker_array.markers.append(arrow)
             marker_id += 1
 
-        # Candidate points
-        for cx, cy in candidates:
-            marker_array.markers.append(self._make_sphere_marker(
-                marker_id, cx, cy, 'candidates',
-                ColorRGBA(r=1.0, g=0.5, b=0.0, a=0.7), clock,
-                scale=0.1
-            ))
-            marker_id += 1
+        # # Candidate points
+        # for cx, cy in candidates:
+        #     marker_array.markers.append(self._make_sphere_marker(
+        #         marker_id, cx, cy, 'candidates',
+        #         ColorRGBA(r=1.0, g=0.5, b=0.0, a=0.7), clock,
+        #         scale=0.1
+        #     ))
+        #     marker_id += 1
 
         return marker_array
 

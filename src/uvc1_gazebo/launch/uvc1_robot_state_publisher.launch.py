@@ -33,7 +33,7 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     # urdf_file_name = "turtlebot3_" + TURTLEBOT3_MODEL + ".urdf"
-    urdf_file_name = "uvc1_virofighter.urdf"
+    urdf_file_name = "uvc1_" + UVC1_MODEL + ".urdf"
     frame_prefix = LaunchConfiguration("frame_prefix", default="")
 
     print("urdf_file_name : {}".format(urdf_file_name))
