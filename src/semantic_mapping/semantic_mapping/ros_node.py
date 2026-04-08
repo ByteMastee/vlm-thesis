@@ -6,6 +6,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
 from tf2_msgs.msg import TFMessage
+from visualization_msgs import msg
 from visualization_msgs.msg import MarkerArray
 
 from semantic_mapping.yolo_map_node import YoloMapNode
@@ -17,20 +18,20 @@ class RosBridgeNode(Node):
         super().__init__('ros_node')
 
         # --- Parameters ---
-        self.declare_parameter('image_topic',        '/fisheye/front/fisheye_front/image_raw')
-        self.declare_parameter('cam_info_topic',     '/fisheye/front/fisheye_front/camera_info')
+        self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_raw')
+        self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
         self.declare_parameter('odom_topic',         '/odom')
         self.declare_parameter('tf_topic',           '/tf')
         self.declare_parameter('tf_static_topic',    '/tf_static')
         self.declare_parameter('frame_skip',         12)
-        self.declare_parameter('confidence',         0.47)
+        self.declare_parameter('confidence',         0.5)
         self.declare_parameter('model_path',         '/root/yolo26m.pt')
         self.declare_parameter('output_dir',         '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output')
         self.declare_parameter('min_angle_deg',      8.0)
         self.declare_parameter('dbscan_eps',         1.0)
         self.declare_parameter('dbscan_min_samples', 3)
-        self.declare_parameter('ray_length',         10.0)
-        self.declare_parameter('process_delay',      110.0)
+        self.declare_parameter('ray_length',         8.0)
+        self.declare_parameter('process_delay',      95.0)
         self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
         image_topic     = self.get_parameter('image_topic').value

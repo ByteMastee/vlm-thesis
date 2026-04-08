@@ -23,52 +23,79 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    launch_file_dir = os.path.join(get_package_share_directory("uvc1_gazebo"), "launch")
+    # Directories
     pkg_gazebo_ros = get_package_share_directory("gazebo_ros")
+    pkg_uvc1 = get_package_share_directory("uvc1_gazebo")
+    launch_dir = os.path.join(pkg_uvc1, "launch")
+    urdf_file = os.path.join(pkg_uvc1, "urdf", "uvc1_virofighter.urdf")
 
+    # Launch configurations
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     x_pose = LaunchConfiguration("x_pose", default="9.0")
     y_pose = LaunchConfiguration("y_pose", default="0.5")
-    theta = LaunchConfiguration("theta", default="3.14")
+    z_pose = LaunchConfiguration("z_pose", default="3.14")
 
-    world = os.path.join(
-        get_package_share_directory("uvc1_gazebo"),
-        "worlds",
-        "my_world.world",
-    )
+    # World file
+    world_file = os.path.join(pkg_uvc1, "worlds", "my_world.world")
 
+    # Start Gazebo server
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_gazebo_ros, "launch", "gzserver.launch.py")
         ),
-        launch_arguments={"world": world}.items(),
+        launch_arguments={"world": world_file}.items(),
     )
 
+    # Start Gazebo client
     gzclient_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_gazebo_ros, "launch", "gzclient.launch.py")
         )
     )
 
-    robot_state_publisher_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, "uvc1_robot_state_publisher.launch.py")
-        ),
-        launch_arguments={"use_sim_time": use_sim_time}.items(),
+    # Publish robot_state using URDF
+    robot_state_publisher_cmd = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="screen",
+        parameters=[
+            {
+                "use_sim_time": use_sim_time,
+                "robot_description": Command(
+                    ["xacro ", urdf_file, " use_sim_time:=", use_sim_time]
+                ),
+            }
+        ],
     )
 
-    spawn_turtlebot_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_file_dir, "uvc1_spawn.launch.py")
-        ),
-        launch_arguments={"x_pose": x_pose, "y_pose": y_pose, "theta": theta}.items(),
+    # Spawn robot from URDF (Gazebo reads all <gazebo> tags inside links)
+    spawn_robot_cmd = Node(
+        package="gazebo_ros",
+        executable="spawn_entity.py",
+        arguments=[
+            "-entity",
+            "uvc1_virofighter",
+            "-x",
+            x_pose,
+            "-y",
+            y_pose,
+            "-z",
+            "0.1",  # Spawn 10cm above ground so it drops safely
+            "-Y",
+            z_pose,  # Use 3.14 value here for the YAW orientation
+            "-topic",
+            "robot_description",
+        ],
+        output="screen",
     )
 
+    # RViz configuration
     rviz_config = os.path.join(
         get_package_share_directory("uvc1_gazebo"),
         "rviz",
@@ -84,23 +111,6 @@ def generate_launch_description():
         parameters=[{"use_sim_time": use_sim_time}],
     )
 
-    # Depth camera to LaserScan conversion
-    d455_scan_node = Node(
-        package="depthimage_to_laserscan",
-        executable="depthimage_to_laserscan_node",
-        name="d455_scan",
-        output="screen",
-        remappings=[("depth", "/d455/depth/image_raw"), ("scan", "/scan")],
-        parameters=[
-            {
-                "output_frame": "camera_d455_depth_optical_frame",
-                "range_min": 0.6,
-                "range_max": 6.0,
-                "scan_height": 10,
-            }
-        ],
-    )
-
     # rviz node
     rviz_node = Node(
         package="rviz2",
@@ -111,16 +121,14 @@ def generate_launch_description():
         parameters=[{"use_sim_time": use_sim_time}],
     )
 
-    
+    # LaunchDescription
     ld = LaunchDescription()
 
     ld.add_action(gzserver_cmd)
     ld.add_action(gzclient_cmd)
     ld.add_action(robot_state_publisher_cmd)
-    ld.add_action(spawn_turtlebot_cmd)
+    ld.add_action(spawn_robot_cmd)
     ld.add_action(gui_teleop_node)  # teleop
-    # ld.add_action(d455_scan_node)  # Add depthimage_to_laserscan node
-    # ld.add_action(rviz_node)  # Add rviz node
-
+    ld.add_action(rviz_node)  # Add rviz node
 
     return ld

@@ -19,6 +19,7 @@
 
 import os
 
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -28,28 +29,28 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    # TURTLEBOT3_MODEL = os.environ["TURTLEBOT3_MODEL"]
-    UVC1_MODEL = os.environ["UVC1_MODEL"]
+    UVC1_MODEL = os.environ.get("UVC1_MODEL", "virofighter")
 
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
-    # urdf_file_name = "turtlebot3_" + TURTLEBOT3_MODEL + ".urdf"
-    urdf_file_name = "uvc1_" + UVC1_MODEL + ".urdf"
     frame_prefix = LaunchConfiguration("frame_prefix", default="")
 
-    print("urdf_file_name : {}".format(urdf_file_name))
-
+    # The URDF already carries all <gazebo> plugins — it IS the single source of truth.
+    # xacro processes it (even plain .urdf files are valid xacro input) so we can
+    # later add xacro macros without changing the launch file.
+    urdf_file_name = "uvc1_" + UVC1_MODEL + ".urdf"
     urdf_path = os.path.join(
         get_package_share_directory("uvc1_gazebo"), "urdf", urdf_file_name
     )
 
-    with open(urdf_path, "r") as infp:
-        robot_desc = infp.read()
+    print(f"[robot_state_publisher] loading: {urdf_path}")
+
+    robot_desc = xacro.process_file(urdf_path).toxml()
 
     return LaunchDescription(
         [
             DeclareLaunchArgument(
                 "use_sim_time",
-                default_value="false",
+                default_value="true",
                 description="Use simulation (Gazebo) clock if true",
             ),
             Node(

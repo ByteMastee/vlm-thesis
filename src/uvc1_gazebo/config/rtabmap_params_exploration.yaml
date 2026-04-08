@@ -1,0 +1,44 @@
+rtabmap:
+  ros__parameters:
+
+    # Fresh map every run — set to false to resume a previous session
+    database_path: ~/.ros/rtabmap_exploration.db
+    delete_db_on_start: true
+    use_sim_time: True
+
+    # Frames — matches your URDF and nav2_params.yaml
+    frame_id:      base_link
+    odom_frame_id: odom
+    map_frame_id:  map
+    publish_tf:    True
+
+    # Dual RGB-D input via rgbd_sync nodes
+    subscribe_rgbd: True
+    rgbd_cameras:   2
+    approx_sync:    True
+
+    # Disable unused inputs
+    subscribe_rgb:   False
+    subscribe_depth: False
+    subscribe_scan:  False
+
+    # 2D occupancy grid — published as /map for Nav2
+    # Resolution and depth match your nav2_params.yaml costmap settings
+    grid:                   True
+    grid_cell_size:         0.05   # 5cm — matches Nav2 costmap resolution
+    grid_max_depth:         4.0    # matches obstacle_max_range in nav2_params.yaml
+    grid_min_depth:         0.3
+    grid_empty_ray_tracing: True
+
+    # SLAM mode (not localization)
+    Mem/IncrementalMemory: "true"
+
+    # Flatten to 2D — important for ground robots, improves map quality
+    Reg/Force3DoF: "true"
+
+    # Loop closure detection rate (Hz)
+    rtabmap_detection_rate: 1
+
+    # Publish map continuously so Nav2 always has the latest
+    map_always_update:     true
+    map_empty_ray_tracing: true

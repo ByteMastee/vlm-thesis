@@ -566,7 +566,7 @@
   <joint name="camera_fisheye_front_joint" type="fixed">
     <parent link="base_link"/>
     <child link="camera_fisheye_front_link"/>
-    <origin xyz="0.07 0 1.845" rpy="0 0.2269 -0.0255"/>
+    <origin xyz="0.07 0 1.845" rpy="0 0.628 -0.0255"/>
   </joint>
 
   <link name="camera_fisheye_front_link">
@@ -694,15 +694,15 @@
   <!-- 3. Gazebo plugins for Cameras Fisheyes (4 on Top) -->
   <!-- ============================= -->
   <!-- Camera Fisheye Front -->
+  <!-- Pinhole simulating rectified fisheye_front: hfov=2*atan(320/271.71)=1.736rad -->
   <gazebo reference="camera_fisheye_front_link">
-    <sensor name="fisheye_front" type="wideanglecamera">
+    <sensor name="fisheye_front" type="camera">
       <pose>0 0 0 0 0 0</pose>
       <always_on>true</always_on>
       <update_rate>60</update_rate>
 
       <camera>
-        <!-- HFOV tuned so Gazebo computes fx=271.71: 2*arctan(320/271.71) = 1.733 rad (~99.3 deg) -->
-        <horizontal_fov>1.733</horizontal_fov>
+        <horizontal_fov>1.736</horizontal_fov>
         <image>
           <width>640</width>
           <height>480</height>
@@ -712,42 +712,31 @@
           <near>0.05</near>
           <far>20.0</far>
         </clip>
-        <!-- sin approximates equidistant projection (r = f*theta) better than tan -->
-        <lens>
-          <type>custom</type>
-          <custom_function>
-            <c1>1.05</c1>
-            <c2>4</c2>
-            <f>1.0</f>
-            <fun>sin</fun>
-          </custom_function>
-          <scale_to_hfov>true</scale_to_hfov>
-          <cutoff_angle>1.733</cutoff_angle>
-        </lens>
       </camera>
 
       <plugin name="fisheye_front_controller" filename="libgazebo_ros_camera.so">
         <ros>
-          <namespace>/fisheye/front</namespace>
+          <namespace>/fisheye_front</namespace>
         </ros>
         <frame_name>camera_fisheye_front_optical_frame</frame_name>
-        <image_topic_name>/fisheye/front/image_raw</image_topic_name>
-        <camera_info_topic_name>/fisheye/front/camera_info</camera_info_topic_name>
+        <image_topic_name>image_rect</image_topic_name>
+        <camera_info_topic_name>camera_info</camera_info_topic_name>
         <always_on>true</always_on>
         <update_rate>60</update_rate>
       </plugin>
     </sensor>
   </gazebo>
 
-  <!-- Camera Fisheye Left-->
+  <!-- Camera Fisheye Left -->
+  <!-- Pinhole simulating rectified fisheye_left: hfov=2*atan(320/261.49)=1.773rad -->
   <gazebo reference="camera_fisheye_left_link">
-    <sensor name="fisheye_left" type="wideanglecamera">
+    <sensor name="fisheye_left" type="camera">
       <pose>0 0 0 0 0 0</pose>
       <always_on>true</always_on>
       <update_rate>60</update_rate>
 
       <camera>
-        <horizontal_fov>2.967</horizontal_fov>
+        <horizontal_fov>1.773</horizontal_fov>
         <image>
           <width>640</width>
           <height>480</height>
@@ -757,26 +746,15 @@
           <near>0.05</near>
           <far>20.0</far>
         </clip>
-        <lens>
-          <type>custom</type>
-          <custom_function>
-            <c1>1.05</c1>
-            <c2>4</c2>
-            <f>1.0</f>
-            <fun>tan</fun>
-          </custom_function>
-          <scale_to_hfov>true</scale_to_hfov>
-          <cutoff_angle>2.967</cutoff_angle>
-        </lens>
       </camera>
 
       <plugin name="fisheye_left_controller" filename="libgazebo_ros_camera.so">
         <ros>
-          <namespace>/fisheye/left</namespace>
+          <namespace>/fisheye_left</namespace>
         </ros>
         <frame_name>camera_fisheye_left_optical_frame</frame_name>
-        <image_topic_name>/fisheye/left/image_raw</image_topic_name>
-        <camera_info_topic_name>/fisheye/left/camera_info</camera_info_topic_name>
+        <image_topic_name>image_rect</image_topic_name>
+        <camera_info_topic_name>camera_info</camera_info_topic_name>
         <always_on>true</always_on>
         <update_rate>60</update_rate>
       </plugin>
@@ -784,14 +762,15 @@
   </gazebo>
 
   <!-- Camera Fisheye Right -->
+  <!-- Pinhole simulating rectified fisheye_right: hfov=2*atan(320/329.70)=1.539rad -->
   <gazebo reference="camera_fisheye_right_link">
-    <sensor name="fisheye_right" type="wideanglecamera">
+    <sensor name="fisheye_right" type="camera">
       <pose>0 0 0 0 0 0</pose>
       <always_on>true</always_on>
       <update_rate>60</update_rate>
 
       <camera>
-        <horizontal_fov>2.967</horizontal_fov>
+        <horizontal_fov>1.539</horizontal_fov>
         <image>
           <width>640</width>
           <height>480</height>
@@ -801,26 +780,15 @@
           <near>0.05</near>
           <far>20.0</far>
         </clip>
-        <lens>
-          <type>custom</type>
-          <custom_function>
-            <c1>1.05</c1>
-            <c2>4</c2>
-            <f>1.0</f>
-            <fun>tan</fun>
-          </custom_function>
-          <scale_to_hfov>true</scale_to_hfov>
-          <cutoff_angle>2.967</cutoff_angle>
-        </lens>
       </camera>
 
       <plugin name="fisheye_right_controller" filename="libgazebo_ros_camera.so">
         <ros>
-          <namespace>/fisheye/right</namespace>
+          <namespace>/fisheye_right</namespace>
         </ros>
         <frame_name>camera_fisheye_right_optical_frame</frame_name>
-        <image_topic_name>/fisheye/right/image_raw</image_topic_name>
-        <camera_info_topic_name>/fisheye/right/camera_info</camera_info_topic_name>
+        <image_topic_name>image_rect</image_topic_name>
+        <camera_info_topic_name>camera_info</camera_info_topic_name>
         <always_on>true</always_on>
         <update_rate>60</update_rate>
       </plugin>
@@ -828,14 +796,15 @@
   </gazebo>
 
   <!-- Camera Fisheye Rear -->
+  <!-- Pinhole simulating rectified fisheye_rear: hfov=2*atan(320/269.15)=1.744rad -->
   <gazebo reference="camera_fisheye_rear_link">
-    <sensor name="fisheye_rear" type="wideanglecamera">
+    <sensor name="fisheye_rear" type="camera">
       <pose>0 0 0 0 0 0</pose>
       <always_on>true</always_on>
       <update_rate>60</update_rate>
 
       <camera>
-        <horizontal_fov>2.967</horizontal_fov>
+        <horizontal_fov>1.744</horizontal_fov>
         <image>
           <width>640</width>
           <height>480</height>
@@ -845,26 +814,15 @@
           <near>0.05</near>
           <far>20.0</far>
         </clip>
-        <lens>
-          <type>custom</type>
-          <custom_function>
-            <c1>1.05</c1>
-            <c2>4</c2>
-            <f>1.0</f>
-            <fun>tan</fun>
-          </custom_function>
-          <scale_to_hfov>true</scale_to_hfov>
-          <cutoff_angle>2.967</cutoff_angle>
-        </lens>
       </camera>
-      
+
       <plugin name="fisheye_rear_controller" filename="libgazebo_ros_camera.so">
         <ros>
-          <namespace>/fisheye/rear</namespace>
+          <namespace>/fisheye_rear</namespace>
         </ros>
         <frame_name>camera_fisheye_rear_optical_frame</frame_name>
-        <image_topic_name>/fisheye/rear/image_raw</image_topic_name>
-        <camera_info_topic_name>/fisheye/rear/camera_info</camera_info_topic_name>
+        <image_topic_name>image_rect</image_topic_name>
+        <camera_info_topic_name>camera_info</camera_info_topic_name>
         <always_on>true</always_on>
         <update_rate>60</update_rate>
       </plugin>
@@ -1240,6 +1198,5 @@
 
     </plugin>
   </gazebo>
-
 
 </robot>

@@ -1,0 +1,28 @@
+rtabmap:
+  ros__parameters:
+    database_path: ~/.ros/rtabmap_multi_camera.db
+    delete_db_on_start: true
+    use_sim_time: True
+    frame_id: base_link
+    odom_frame_id: odom
+    map_frame_id: map
+    publish_tf: True
+
+    # SLAM with 2 RGBD cameras
+    subscribe_rgbd: True
+    rgbd_cameras: 2
+    approx_sync: True
+
+    # Disable other inputs
+    subscribe_rgb: False
+    subscribe_depth: False
+    subscribe_scan: False
+
+    # 2D map for Nav2
+    grid: True
+    grid_cell_size: 0.05
+    grid_max_depth: 4.0
+    grid_min_depth: 0.3
+    grid_empty_ray_tracing: True
+
+    rtabmap_detection_rate: 1

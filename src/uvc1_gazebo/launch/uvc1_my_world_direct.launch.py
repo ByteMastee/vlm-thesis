@@ -111,7 +111,7 @@ def generate_launch_description():
         parameters=[{"use_sim_time": use_sim_time}],
     )
 
-    # Node 1: D455 (Main Navigation Scan)
+    # D455
     d455_scan_node = Node(
         package="depthimage_to_laserscan",
         executable="depthimage_to_laserscan_node",
@@ -119,13 +119,13 @@ def generate_launch_description():
         remappings=[
             ("depth", "/d455/depth/d455_depth/depth/image_raw"),
             ("depth_camera_info", "/d455/depth/d455_depth/depth/camera_info"),
-            ("scan", "/scan_d455"),
+            ("scan", "/scan"),
         ],
         parameters=[
             {
                 "use_sim_time": True,
-                # Use the camera's OWN frame. Let robot_state_publisher handle the 180 flip.
-                "output_frame": "camera_d455_depth_optical_frame",
+                # "output_frame": "camera_d455_depth_optical_frame",
+                "output_frame": "camera_d455_link",
                 "range_min": 0.5,
                 "range_max": 10.0,
                 "scan_height": 5,
@@ -133,7 +133,7 @@ def generate_launch_description():
         ],
     )
 
-    # Node 2: D435i (Secondary Scan - Tilted)
+    # D435i (Tilted)
     # Publishing to a different topic so it doesn't interfere with Nav2 for now.
     d435i_scan_node = Node(
         package="depthimage_to_laserscan",
@@ -142,7 +142,7 @@ def generate_launch_description():
         remappings=[
             ("depth", "/d435i/depth/d435i_depth/depth/image_raw"),
             ("depth_camera_info", "/d435i/depth/d435i_depth/depth/camera_info"),
-            ("scan", "/scan"),  # Separate topic
+            ("scan", "/scan_d435i"),  # Separate topic
         ],
         parameters=[
             {

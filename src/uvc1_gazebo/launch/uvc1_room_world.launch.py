@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Authors: Pravin Oli / Hariram Sampath Kumar
+# Authors: Hariram Sampath Kumar
 # https://www.euroknows.com/en/home/
 
 import os

@@ -207,25 +207,15 @@ local_costmap:
         z_voxels: 16
         max_obstacle_height: 2.0
         mark_threshold: 0
-        # observation_sources: scan
-        observation_sources: depth_points
-        # scan:
-        #   topic: /scan
-        #   max_obstacle_height: 2.0
-        #   clearing: True
-        #   marking: True
-        #   data_type: "LaserScan"
-        #   raytrace_max_range: 3.0
-        #   raytrace_min_range: 0.0
-        #   obstacle_max_range: 2.5
-        #   obstacle_min_range: 0.0
-        depth_points:
-          topic: /d455/depth/d455_depth/points
+        observation_sources: scan
+        scan:
+          topic: /scan
           max_obstacle_height: 2.0
-          min_obstacle_height: 0.0
           clearing: True
           marking: True
-          data_type: "PointCloud2"
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
       static_layer:
@@ -248,25 +238,15 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        # observation_sources: scan
-        observation_sources: depth_points
-        # scan:
-        #   topic: /scan
-        #   max_obstacle_height: 2.0
-        #   clearing: True
-        #   marking: True
-        #   data_type: "LaserScan"
-        #   raytrace_max_range: 3.0
-        #   raytrace_min_range: 0.0
-        #   obstacle_max_range: 2.5
-        #   obstacle_min_range: 0.0
-        depth_points:
-          topic: /d455/depth/d455_depth/points
+        observation_sources: scan
+        scan:
+          topic: /scan
           max_obstacle_height: 2.0
-          min_obstacle_height: 0.0
           clearing: True
           marking: True
-          data_type: "PointCloud2"
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
       static_layer:

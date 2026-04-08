@@ -19,7 +19,6 @@
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -27,73 +26,45 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    # # Get the urdf file
-    # TURTLEBOT3_MODEL = os.environ["TURTLEBOT3_MODEL"]
-    # model_folder = "turtlebot3_" + TURTLEBOT3_MODEL
-    # urdf_path = os.path.join(
-    #     get_package_share_directory("uvc1_gazebo"),
-    #     "models",
-    #     model_folder,
-    #     "model.sdf",
-    # )
-
-    # Get the urdf file
-    UVC1_MODEL = os.environ["UVC1_MODEL"]
-    model_folder = "uvc1_" + UVC1_MODEL
-    urdf_path = os.path.join(
-        get_package_share_directory("uvc1_gazebo"),
-        "models",
-        model_folder,
-        "model.sdf",
-    )
+    UVC1_MODEL = os.environ.get("UVC1_MODEL", "virofighter")
 
     # Launch configuration variables specific to simulation
     x_pose = LaunchConfiguration("x_pose", default="0.0")
     y_pose = LaunchConfiguration("y_pose", default="0.0")
-    theta = LaunchConfiguration("theta", default="0.0")
+    theta  = LaunchConfiguration("theta",  default="0.0")
 
     # Declare the launch arguments
     declare_x_position_cmd = DeclareLaunchArgument(
-        "x_pose", default_value="0.0", description="Specify namespace of the robot"
+        "x_pose", default_value="0.0", description="Initial X position of the robot"
     )
-
     declare_y_position_cmd = DeclareLaunchArgument(
-        "y_pose", default_value="0.0", description="Specify namespace of the robot"
+        "y_pose", default_value="0.0", description="Initial Y position of the robot"
     )
-
     declare_theta_cmd = DeclareLaunchArgument(
-        "theta", default_value="0.0", description="Specify namespace of the robot"
+        "theta", default_value="0.0", description="Initial yaw (radians) of the robot"
     )
 
+    # Plan A: spawn from /robot_description topic published by robot_state_publisher.
+    # This means the URDF (with its <gazebo> plugin tags) is the single source of
+    # truth — model.sdf is no longer needed and can be removed.
     start_gazebo_ros_spawner_cmd = Node(
         package="gazebo_ros",
         executable="spawn_entity.py",
         arguments=[
-            "-entity",
-            # TURTLEBOT3_MODEL,
-            UVC1_MODEL,
-            # model_folder,
-            "-file",
-            urdf_path,
-            "-x",
-            x_pose,
-            "-y",
-            y_pose,
-            "-z",
-            "0.01",
-            "-Y",
-            theta,
+            "-entity", UVC1_MODEL,
+            "-topic", "/robot_description",   # ← reads the URDF from RSP
+            "-x", x_pose,
+            "-y", y_pose,
+            "-z", "0.01",
+            "-Y", theta,
         ],
         output="screen",
     )
 
     ld = LaunchDescription()
-
-    # Declare the launch options
     ld.add_action(declare_x_position_cmd)
     ld.add_action(declare_y_position_cmd)
-
-    # Add any conditioned actions
+    ld.add_action(declare_theta_cmd)
     ld.add_action(start_gazebo_ros_spawner_cmd)
 
     return ld

@@ -85,6 +85,7 @@ class YoloMapNode:
             frame_rays      — list of (origin, ray) for this frame
             frame_candidates — list of (x, y) new candidates from this frame
         """
+
         if self.R_optical_to_base is None:
             self.logger.warn('TF static not set yet — skipping frame.')
             return None, None, None, None
@@ -111,15 +112,12 @@ class YoloMapNode:
                 px_cy  = (y1 + y2) // 2
 
                 origin, ray = self._pixel_to_ray_odom(px_cx, px_cy, rx, ry, yaw)
+
                 # self.logger.info(
                 #     f'[{label}] px:({px_cx},{px_cy}) | '
                 #     f'origin:({origin[0]:.3f},{origin[1]:.3f},{origin[2]:.3f}) | '
                 #     f'ray:({ray[0]:.3f},{ray[1]:.3f},{ray[2]:.3f})'
                 # )
-
-                if ray[2] < -0.5:
-                    self.logger.info(f'[{label}] Ray filtered — pointing downward: z={ray[2]:.3f}')
-                    continue
 
                 frame_rays.append((origin, ray))
 
@@ -163,13 +161,13 @@ class YoloMapNode:
         return all_candidates
 
     def save_outputs(self):
-        json_path = os.path.join(self.output_dir, 'object_stacknew.json')
+        json_path = os.path.join(self.output_dir, 'E1_object1.json')
         with open(json_path, 'w') as f:
             json.dump(self.object_stack, f, indent=2)
         self.logger.info(f'Object stack saved: {json_path}')
 
         robot_path_data = {'x': self.robot_x, 'y': self.robot_y}
-        robot_path_json = os.path.join(self.output_dir, 'robot_pathnew.json')
+        robot_path_json = os.path.join(self.output_dir, 'E1_path1.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
         self.logger.info(f'Robot path saved: {robot_path_json}')
@@ -195,6 +193,7 @@ class YoloMapNode:
         else:
             self.logger.warn(f'Unsupported encoding: {msg.encoding}')
             return None
+
         return img
 
     def _extract_odom(self, msg):
@@ -382,7 +381,7 @@ class YoloMapNode:
         plt.grid(True)
         plt.axis('equal')
 
-        plot_path = os.path.join(self.output_dir, 'map_plotnew.png')
+        plot_path = os.path.join(self.output_dir, 'E1_map1.png')
         plt.savefig(plot_path, dpi=150)
         plt.close()
         return plot_path
