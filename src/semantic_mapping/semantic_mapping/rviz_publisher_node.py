@@ -81,11 +81,15 @@ class RvizPublisherNode:
         return marker_array
 
     # --- Live markers per frame ---
+    # rays: list of (origin_2d, ray_2d, ray_length)
+    #   origin_2d — np.array [x, y]
+    #   ray_2d    — np.array [x, y], normalized 2D direction
+    #   ray_length — scalar (metres)
     def build_live_markers(self, robot_x, robot_y, rays, candidates, clock):
         marker_array = MarkerArray()
         marker_id    = 0
 
-        # Robot position sphere
+        # Robot position sphere (flat on ground plane)
         marker_array.markers.append(self._make_sphere_marker(
             marker_id, robot_x, robot_y, 'robot_position',
             ColorRGBA(r=0.0, g=1.0, b=1.0, a=1.0), clock,
@@ -93,9 +97,10 @@ class RvizPublisherNode:
         ))
         marker_id += 1
 
-        # Rays — one arrow per detection
-        for origin, ray, ray_length in rays:
-            end = origin + ray * ray_length
+        # 2D Rays — arrows at z=0
+        for origin_2d, ray_2d, ray_length in rays:
+            end_2d = origin_2d + ray_2d * ray_length
+
             arrow                    = Marker()
             arrow.header.frame_id    = 'odom'
             arrow.header.stamp       = clock.now().to_msg()
@@ -103,35 +108,26 @@ class RvizPublisherNode:
             arrow.id                 = marker_id
             arrow.type               = Marker.ARROW
             arrow.action             = Marker.ADD
-            arrow.scale.x            = 0.04
-            arrow.scale.y            = 0.08
-            arrow.scale.z            = 0.08
+            arrow.scale.x            = 0.04   # shaft diameter
+            arrow.scale.y            = 0.08   # head diameter
+            arrow.scale.z            = 0.08   # head length
             arrow.color              = ColorRGBA(r=1.0, g=1.0, b=0.0, a=0.8)
             arrow.pose.orientation.w = 1.0
             arrow.lifetime           = Duration(sec=3)
 
             p_start   = Point()
-            p_start.x = float(origin[0])
-            p_start.y = float(origin[1])
-            p_start.z = float(origin[2])
+            p_start.x = float(origin_2d[0])
+            p_start.y = float(origin_2d[1])
+            p_start.z = 0.0              # flat on ground
 
             p_end   = Point()
-            p_end.x = float(end[0])
-            p_end.y = float(end[1])
-            p_end.z = float(end[2])
+            p_end.x = float(end_2d[0])
+            p_end.y = float(end_2d[1])
+            p_end.z = 0.0                # flat on ground
 
             arrow.points = [p_start, p_end]
             marker_array.markers.append(arrow)
             marker_id += 1
-
-        # # Candidate points
-        # for cx, cy in candidates:
-        #     marker_array.markers.append(self._make_sphere_marker(
-        #         marker_id, cx, cy, 'candidates',
-        #         ColorRGBA(r=1.0, g=0.5, b=0.0, a=0.7), clock,
-        #         scale=0.1
-        #     ))
-        #     marker_id += 1
 
         return marker_array
 

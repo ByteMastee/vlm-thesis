@@ -3,11 +3,16 @@ import json
 import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
-from ultralytics import YOLO
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+from ultralytics import YOLO
+
+import tf2_ros
+from geometry_msgs.msg import PointStamped
+import rclpy
 
 
 class YoloMapNode:
@@ -21,7 +26,8 @@ class YoloMapNode:
         dbscan_min_samples,
         output_dir,
         ground_truth,
-        logger
+        logger,
+        tf_buffer
     ):
         self.confidence         = confidence
         self.fx                 = fx
@@ -34,9 +40,7 @@ class YoloMapNode:
         self.output_dir         = output_dir
         self.ground_truth       = ground_truth
         self.logger             = logger
-
-        self.R_optical_to_base = None
-        self.T_cam_offset      = None
+        self.tf_buffer          = tf_buffer
 
         self.ray_stack         = {}
         self.candidate_stack   = {}
@@ -52,44 +56,13 @@ class YoloMapNode:
         self.model = YOLO(model_path)
         self.logger.info('YOLO model loaded.')
 
-    def set_tf_static(self, tf_msg):
-        if self.R_optical_to_base is not None:
-            return
-
-        tf_map = {}
-        for tf in tf_msg.transforms:
-            parent = tf.header.frame_id.lstrip('/')
-            child  = tf.child_frame_id.lstrip('/')
-            tf_map[(parent, child)] = tf.transform
-
-        key1 = ('base_link', 'camera_fisheye_front_link')
-        key2 = ('camera_fisheye_front_link', 'camera_fisheye_front_optical_frame')
-
-        if key1 not in tf_map or key2 not in tf_map:
-            return
-
-        T1 = self._tf_to_matrix(tf_map[key1])
-        T2 = self._tf_to_matrix(tf_map[key2])
-        T_base_to_optical = T1 @ T2
-        T_optical_to_base = np.linalg.inv(T_base_to_optical)
-
-        self.R_optical_to_base = T_optical_to_base[:3, :3]
-        self.T_cam_offset      = T_base_to_optical[:3, 3]
-
-        self.logger.info('TF static set — R_optical_to_base and T_cam_offset computed.')
-
     def process_frame(self, image_msg, odom_msg):
         """
         Returns:
-            rx, ry          — robot position
-            frame_rays      — list of (origin, ray) for this frame
+            rx, ry           — robot position (2D)
+            frame_rays       — list of (origin_2d, ray_2d) for this frame
             frame_candidates — list of (x, y) new candidates from this frame
         """
-
-        if self.R_optical_to_base is None:
-            self.logger.warn('TF static not set yet — skipping frame.')
-            return None, None, None, None
-
         img = self._decode_image(image_msg)
         if img is None:
             return None, None, None, None
@@ -111,39 +84,37 @@ class YoloMapNode:
                 px_cx  = (x1 + x2) // 2
                 px_cy  = (y1 + y2) // 2
 
-                origin, ray = self._pixel_to_ray_odom(px_cx, px_cy, rx, ry, yaw)
+                ray_2d, origin_2d = self._pixel_to_ray_2d(
+                    px_cx, px_cy,
+                    rx, ry, yaw,
+                )
 
-                # self.logger.info(
-                #     f'[{label}] px:({px_cx},{px_cy}) | '
-                #     f'origin:({origin[0]:.3f},{origin[1]:.3f},{origin[2]:.3f}) | '
-                #     f'ray:({ray[0]:.3f},{ray[1]:.3f},{ray[2]:.3f})'
-                # )
+                if ray_2d is None:
+                    continue
 
-                frame_rays.append((origin, ray))
+                frame_rays.append((origin_2d, ray_2d))
 
                 if label not in self.ray_stack:
                     self.ray_stack[label]       = []
                     self.candidate_stack[label] = []
 
                 for prev_origin, prev_ray in self.ray_stack[label]:
-                    angle = self._angle_between_rays(ray, prev_ray)
+                    angle = self._angle_between_rays_2d(ray_2d, prev_ray)
 
                     if angle < self.min_angle_deg:
                         self.total_skipped += 1
                         continue
 
-                    midpoint = self._closest_approach_midpoint(
-                        prev_origin, prev_ray, origin, ray
-                    )
+                    pt = self._intersect_rays_2d(prev_origin, prev_ray, origin_2d, ray_2d)
 
-                    if midpoint is None:
+                    if pt is None:
                         continue
 
-                    self.candidate_stack[label].append((midpoint[0], midpoint[1]))
-                    frame_candidates.append((midpoint[0], midpoint[1]))
+                    self.candidate_stack[label].append((pt[0], pt[1]))
+                    frame_candidates.append((pt[0], pt[1]))
                     self.total_triangulated += 1
 
-                self.ray_stack[label].append((origin, ray))
+                self.ray_stack[label].append((origin_2d, ray_2d))
 
         return rx, ry, frame_rays, frame_candidates
 
@@ -161,7 +132,7 @@ class YoloMapNode:
         return all_candidates
 
     def save_outputs(self):
-        json_path = os.path.join(self.output_dir, 'E1_object1.json')
+        json_path = os.path.join(self.output_dir, 'E1_object4.json')
         with open(json_path, 'w') as f:
             json.dump(self.object_stack, f, indent=2)
         self.logger.info(f'Object stack saved: {json_path}')
@@ -180,6 +151,94 @@ class YoloMapNode:
 
     # --- Private helpers ---
 
+    def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw):
+        """
+        Uses tf2_ros Buffer to look up the transform from
+        camera_fisheye_front_optical_frame -> odom,
+        projects the pixel ray into the odom XY plane (z=0, 2D).
+
+        Returns:
+            ray_2d   — normalized 2D direction in odom frame (np.array [x, y])
+            origin_2d — 2D camera origin in odom frame (np.array [x, y])
+        """
+        # Step 1: Build unit ray in optical frame
+        # Camera +Z is the viewing direction (forward into the scene)
+        x_cam = (px_cx - self.cx) / self.fx
+        y_cam = (px_cy - self.cy) / self.fy
+        z_cam = 1.0
+        ray_optical = np.array([x_cam, y_cam, z_cam])
+        ray_optical = ray_optical / np.linalg.norm(ray_optical)
+
+        # Step 2: Reject rays pointing behind the camera (z_cam should be > 0 always here)
+        if z_cam <= 0:
+            return None, None
+
+        # Step 3: Look up TF — optical_frame -> odom
+        try:
+            tf_stamped = self.tf_buffer.lookup_transform(
+                'odom',
+                'camera_fisheye_front_optical_frame',
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=0.1)
+            )
+        except Exception as e:
+            self.logger.warn(f'TF lookup failed: {e}')
+            return None, None
+
+        # Step 4: Extract rotation matrix and translation from TF
+        R = self._quat_to_rotation_matrix(tf_stamped.transform.rotation)
+        t = np.array([
+            tf_stamped.transform.translation.x,
+            tf_stamped.transform.translation.y,
+            tf_stamped.transform.translation.z
+        ])
+
+        # Step 5: Rotate ray into odom frame
+        ray_odom_3d = R @ ray_optical
+
+        # Step 6: Project to 2D — take only XY, normalize
+        ray_2d = ray_odom_3d[:2]
+        norm = np.linalg.norm(ray_2d)
+        if norm < 1e-6:
+            return None, None
+        ray_2d = ray_2d / norm
+
+        # Step 7: Camera origin in odom XY
+        origin_2d = t[:2]
+
+        return ray_2d, origin_2d
+
+    def _angle_between_rays_2d(self, d1, d2):
+        cos_angle = np.clip(np.dot(d1, d2), -1.0, 1.0)
+        return np.degrees(np.arccos(cos_angle))
+
+    def _intersect_rays_2d(self, o1, d1, o2, d2):
+        """
+        2D ray intersection: find closest point between two 2D rays.
+        Returns midpoint if both t1 >= 0 and t2 >= 0 (forward direction only).
+        """
+        # Solve: o1 + t1*d1 = o2 + t2*d2
+        # [d1 | -d2] * [t1, t2]^T = o2 - o1
+        A = np.array([[d1[0], -d2[0]],
+                      [d1[1], -d2[1]]])
+        b = o2 - o1
+
+        denom = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]
+        if abs(denom) < 1e-6:
+            return None
+
+        t1 = (b[0] * A[1, 1] - b[1] * A[0, 1]) / denom
+        t2 = (A[0, 0] * b[1] - A[1, 0] * b[0]) / denom
+
+        # Reject if either ray points backward (object is behind camera)
+        if t1 < 0 or t2 < 0:
+            return None
+
+        p1 = o1 + t1 * d1
+        p2 = o2 + t2 * d2
+        midpoint = (p1 + p2) / 2.0
+        return midpoint
+
     def _decode_image(self, msg):
         img_array = np.frombuffer(bytes(msg.data), dtype=np.uint8)
         if msg.encoding == 'rgb8':
@@ -193,7 +252,6 @@ class YoloMapNode:
         else:
             self.logger.warn(f'Unsupported encoding: {msg.encoding}')
             return None
-
         return img
 
     def _extract_odom(self, msg):
@@ -206,61 +264,13 @@ class YoloMapNode:
         )
         return rx, ry, yaw
 
-    def _pixel_to_ray_odom(self, px_cx, px_cy, robot_x, robot_y, yaw):
-        x = (px_cx - self.cx) / self.fx
-        y = (px_cy - self.cy) / self.fy
-        z = 1.0
-        ray_cam = np.array([x, y, z])
-        ray_cam = ray_cam / np.linalg.norm(ray_cam)
-
-        ray_base = self.R_optical_to_base @ ray_cam
-        ray_base = ray_base / np.linalg.norm(ray_base)
-
-        c, s = np.cos(yaw), np.sin(yaw)
-        R_yaw = np.array([
-            [c, -s, 0],
-            [s,  c, 0],
-            [0,  0, 1]
+    def _quat_to_rotation_matrix(self, q):
+        qx, qy, qz, qw = q.x, q.y, q.z, q.w
+        return np.array([
+            [1 - 2*(qy**2 + qz**2),  2*(qx*qy - qz*qw),  2*(qx*qz + qy*qw)],
+            [2*(qx*qy + qz*qw),  1 - 2*(qx**2 + qz**2),  2*(qy*qz - qx*qw)],
+            [2*(qx*qz - qy*qw),  2*(qy*qz + qx*qw),  1 - 2*(qx**2 + qy**2)]
         ])
-        ray_odom = R_yaw @ ray_base
-        ray_odom = ray_odom / np.linalg.norm(ray_odom)
-
-        R2d = np.array([[c, -s], [s, c]])
-        cam_offset_rotated = R2d @ self.T_cam_offset[:2]
-        origin = np.array([
-            robot_x + cam_offset_rotated[0],
-            robot_y + cam_offset_rotated[1],
-            self.T_cam_offset[2]
-        ])
-
-        return origin, ray_odom
-
-    def _angle_between_rays(self, d1, d2):
-        cos_angle = np.clip(np.dot(d1, d2), -1.0, 1.0)
-        return np.degrees(np.arccos(cos_angle))
-
-    def _closest_approach_midpoint(self, o1, d1, o2, d2):
-        w0 = o1 - o2
-        a  = np.dot(d1, d1)
-        b  = np.dot(d1, d2)
-        c  = np.dot(d2, d2)
-        d  = np.dot(d1, w0)
-        e  = np.dot(d2, w0)
-
-        denom = a * c - b * b
-        if abs(denom) < 1e-6:
-            return None
-
-        t1 = (b * e - c * d) / denom
-        t2 = (a * e - b * d) / denom
-
-        if t1 < 0 or t2 < 0:
-            return None
-
-        p1       = o1 + t1 * d1
-        p2       = o2 + t2 * d2
-        midpoint = (p1 + p2) / 2.0
-        return midpoint
 
     def _cluster_candidates(self, candidates, label):
         object_entries = {}
@@ -306,26 +316,6 @@ class YoloMapNode:
             }
 
         return object_entries
-
-    def _tf_to_matrix(self, transform):
-        R = self._quat_to_rotation_matrix(transform.rotation)
-        t = np.array([
-            transform.translation.x,
-            transform.translation.y,
-            transform.translation.z
-        ])
-        T         = np.eye(4)
-        T[:3, :3] = R
-        T[:3, 3]  = t
-        return T
-
-    def _quat_to_rotation_matrix(self, q):
-        qx, qy, qz, qw = q.x, q.y, q.z, q.w
-        return np.array([
-            [1 - 2*(qy**2 + qz**2),  2*(qx*qy - qz*qw),  2*(qx*qz + qy*qw)],
-            [2*(qx*qy + qz*qw),  1 - 2*(qx**2 + qz**2),  2*(qy*qz - qx*qw)],
-            [2*(qx*qz - qy*qw),  2*(qy*qz + qx*qw),  1 - 2*(qx**2 + qy**2)]
-        ])
 
     def _save_map_plot(self):
         plt.figure(figsize=(10, 10))
@@ -381,7 +371,7 @@ class YoloMapNode:
         plt.grid(True)
         plt.axis('equal')
 
-        plot_path = os.path.join(self.output_dir, 'E1_map1.png')
+        plot_path = os.path.join(self.output_dir, 'E1_map4.png')
         plt.savefig(plot_path, dpi=150)
         plt.close()
         return plot_path

@@ -5,9 +5,9 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
-from tf2_msgs.msg import TFMessage
-from visualization_msgs import msg
 from visualization_msgs.msg import MarkerArray
+
+import tf2_ros
 
 from semantic_mapping.yolo_map_node import YoloMapNode
 from semantic_mapping.rviz_publisher_node import RvizPublisherNode
@@ -21,24 +21,20 @@ class RosBridgeNode(Node):
         self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_raw')
         self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
         self.declare_parameter('odom_topic',         '/odom')
-        self.declare_parameter('tf_topic',           '/tf')
-        self.declare_parameter('tf_static_topic',    '/tf_static')
-        self.declare_parameter('frame_skip',         12)
-        self.declare_parameter('confidence',         0.5)
+        self.declare_parameter('frame_skip',         7)
+        self.declare_parameter('confidence',         0.50)
         self.declare_parameter('model_path',         '/root/yolo26m.pt')
         self.declare_parameter('output_dir',         '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output')
-        self.declare_parameter('min_angle_deg',      8.0)
+        self.declare_parameter('min_angle_deg',      9.0)
         self.declare_parameter('dbscan_eps',         1.0)
         self.declare_parameter('dbscan_min_samples', 3)
         self.declare_parameter('ray_length',         8.0)
         self.declare_parameter('process_delay',      95.0)
         self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
-        image_topic     = self.get_parameter('image_topic').value
-        cam_info_topic  = self.get_parameter('cam_info_topic').value
-        odom_topic      = self.get_parameter('odom_topic').value
-        tf_topic        = self.get_parameter('tf_topic').value
-        tf_static_topic = self.get_parameter('tf_static_topic').value
+        image_topic    = self.get_parameter('image_topic').value
+        cam_info_topic = self.get_parameter('cam_info_topic').value
+        odom_topic     = self.get_parameter('odom_topic').value
 
         self.frame_skip         = self.get_parameter('frame_skip').value
         self.confidence         = self.get_parameter('confidence').value
@@ -47,8 +43,8 @@ class RosBridgeNode(Node):
         self.min_angle_deg      = self.get_parameter('min_angle_deg').value
         self.dbscan_eps         = self.get_parameter('dbscan_eps').value
         self.dbscan_min_samples = self.get_parameter('dbscan_min_samples').value
-        self.ray_length       = self.get_parameter('ray_length').value
-        process_delay         = self.get_parameter('process_delay').value
+        self.ray_length         = self.get_parameter('ray_length').value
+        process_delay           = self.get_parameter('process_delay').value
 
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
@@ -58,11 +54,14 @@ class RosBridgeNode(Node):
 
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # --- TF2 Buffer and Listener ---
+        self.tf_buffer   = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
         # --- State ---
         self.latest_odom        = None
         self.cam_info           = None
         self.is_calibrated      = False
-        self.tf_static_msg      = None
         self.frame_count        = 0
         self.processed_count    = 0
         self.process_done       = False
@@ -75,11 +74,6 @@ class RosBridgeNode(Node):
         self.rviz_publisher = None
 
         # --- QoS ---
-        tf_static_qos = QoSProfile(
-            depth=100,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            reliability=ReliabilityPolicy.RELIABLE
-        )
         latched_qos = QoSProfile(
             depth=1,
             durability=DurabilityPolicy.TRANSIENT_LOCAL
@@ -90,11 +84,9 @@ class RosBridgeNode(Node):
         self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',    10)
 
         # --- Subscribers ---
-        self.create_subscription(CameraInfo, cam_info_topic,  self.cam_info_cb,  10)
-        self.create_subscription(Image,      image_topic,     self.image_cb,     10)
-        self.create_subscription(Odometry,   odom_topic,      self.odom_cb,      10)
-        self.create_subscription(TFMessage,  tf_topic,        self.tf_cb,        10)
-        self.create_subscription(TFMessage,  tf_static_topic, self.tf_static_cb, tf_static_qos)
+        self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
+        self.create_subscription(Image,      image_topic,    self.image_cb,    10)
+        self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)
 
         # --- Process timer ---
         self.create_timer(process_delay, self.process)
@@ -129,17 +121,15 @@ class RosBridgeNode(Node):
             dbscan_min_samples=self.dbscan_min_samples,
             output_dir=self.output_dir,
             ground_truth=self.ground_truth,
-            logger=self.get_logger()
+            logger=self.get_logger(),
+            tf_buffer=self.tf_buffer
         )
 
         self.rviz_publisher = RvizPublisherNode(
             logger=self.get_logger()
         )
 
-        if self.tf_static_msg is not None:
-            self.yolo_map_node.set_tf_static(self.tf_static_msg)
-
-        # --- Publish GT markers once ---
+        # Publish GT markers once
         if self.ground_truth and not self.gt_published:
             gt_markers = self.rviz_publisher.build_gt_markers(
                 self.ground_truth, self.get_clock()
@@ -155,13 +145,10 @@ class RosBridgeNode(Node):
 
         if not self.is_calibrated:
             return
-
         if self.latest_odom is None:
             return
-
         if self.yolo_map_node is None:
             return
-
         if self.frame_count % self.frame_skip != 0:
             return
 
@@ -187,18 +174,17 @@ class RosBridgeNode(Node):
         if rx is None:
             return
 
-        # --- Live RViz publish ---
-        all_candidates = self.yolo_map_node.get_all_candidates()
-
+        # Live RViz publish — 2D rays
         rays_with_length = [
-            (origin, ray, self.ray_length) for origin, ray in frame_rays
+            (origin_2d, ray_2d, self.ray_length)
+            for origin_2d, ray_2d in frame_rays
         ]
 
         live_markers = self.rviz_publisher.build_live_markers(
             robot_x=rx,
             robot_y=ry,
             rays=rays_with_length,
-            candidates=all_candidates,
+            candidates=self.yolo_map_node.get_all_candidates(),
             clock=self.get_clock()
         )
 
@@ -206,14 +192,6 @@ class RosBridgeNode(Node):
 
     def odom_cb(self, msg):
         self.latest_odom = msg
-
-    def tf_cb(self, msg):
-        pass
-
-    def tf_static_cb(self, msg):
-        self.tf_static_msg = msg
-        if self.yolo_map_node is not None:
-            self.yolo_map_node.set_tf_static(msg)
 
     # --- Process ---
 
