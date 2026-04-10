@@ -27,6 +27,7 @@ setup(
             'rviz_publisher_node = semantic_mapping.rviz_publisher_node:main',
             'multi_run_visualizer = semantic_mapping.multi_run_visualizer:main',
             'da3_map_node = semantic_mapping.da3_map_node:main',
+            'vlm_test_node = semantic_mapping.vlm_test_node:main',
         ],
     },
 )

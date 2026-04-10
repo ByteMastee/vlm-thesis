@@ -1,0 +1,5 @@
+vlm_test_node:
+  ros__parameters:
+    prompt: "List the furniture items visible. For each item write: item name, color. One item per line. Example: chair, blue"
+    max_frames: 60
+    frame_skip: 25
