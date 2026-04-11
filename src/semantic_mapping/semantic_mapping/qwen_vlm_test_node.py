@@ -21,11 +21,11 @@ class QwenVlmTestNode(Node):
         # --- Parameters ---
         self.declare_parameter('image_topic', '/fisheye_front/fisheye_front/image_raw')
         self.declare_parameter('model_path',  '/root/UVC_ws/models/qwen2.5-vl-3b')
-        self.declare_parameter('frame_skip',  20)
-        self.declare_parameter('max_frames',  60)
-        self.declare_parameter('prompt',      'What objects are visible in this image? List each object, its color, and a brief description.')
-        self.declare_parameter('output_dir',  '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output/qwen_test')
-        self.declare_parameter('max_new_tokens', 256)
+        self.declare_parameter('frame_skip',  50)
+        self.declare_parameter('max_frames',  35)
+        self.declare_parameter('prompt', 'What objects are visible in this image? Ignore the floor, walls, and ceiling. List only the physical objects. For each object write its name and color. One object per line.')
+        self.declare_parameter('output_dir',  '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output/qwen_test5')
+        self.declare_parameter('max_new_tokens', 128)
 
         self.image_topic    = self.get_parameter('image_topic').value
         self.model_path     = self.get_parameter('model_path').value
@@ -63,14 +63,18 @@ class QwenVlmTestNode(Node):
         self.get_logger().info('Ready. Start bag playback now.')
 
     def _load_model(self):
+        from transformers import BitsAndBytesConfig
         self.get_logger().info('Loading Qwen2.5-VL processor...')
         self.processor = AutoProcessor.from_pretrained(self.model_path)
 
-        self.get_logger().info('Loading Qwen2.5-VL model (float16, auto device map)...')
+        self.get_logger().info('Loading Qwen2.5-VL model (4-bit quantization)...')
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_path,
-            torch_dtype=torch.float16,
-            device_map='auto'
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16
+            ),
+            device_map='cuda:0'
         )
         self.model.eval()
         self.model_ready = True
@@ -158,7 +162,7 @@ class QwenVlmTestNode(Node):
                 text=[text],
                 images=image_inputs,
                 return_tensors='pt'
-            ).to('cuda')
+            ).to('cuda:0')
 
             with torch.no_grad():
                 output = self.model.generate(
