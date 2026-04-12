@@ -171,8 +171,8 @@
       <static>1</static>
       <pose>-2.0 1.5 0 0 0 0</pose>
       <link name="link">
-        <collision name="col"><geometry><box><size>1.2 0.8 1.0</size></box></geometry><pose>0 0 0.5 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 0.5 0 0 0</pose><geometry><box><size>1.2 0.8 1.0</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
+        <collision name="col"><geometry><box><size>1.2 0.8 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>1.2 0.8 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
     </model>
@@ -181,8 +181,8 @@
       <static>1</static>
       <pose>0.5 0.0 0 0 0 0</pose>
       <link name="link">
-        <collision name="col"><geometry><box><size>1.5 0.8 1.0</size></box></geometry><pose>0 0 0.5 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 0.5 0 0 0</pose><geometry><box><size>1.5 0.8 1.0</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
+        <collision name="col"><geometry><box><size>1.5 0.8 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>1.5 0.8 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
     </model>

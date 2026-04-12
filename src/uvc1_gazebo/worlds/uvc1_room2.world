@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <sdf version="1.7">
-  <world name="uvc1_room">
+  <world name="uvc2_room">
 
     <!-- ========== GAZEBO ROS PLUGINS ========== -->
     <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
@@ -83,66 +83,99 @@
     </model>
 
     <!-- ========== ROOM WALLS ========== -->
-    <!-- Room: 10m wide (x: -5 to 5), 8m deep (y: -4 to 4), height 2.5m -->
-    <!-- Entry: 1.5m at south-center (x: -0.75 to 0.75)                  -->
-    <!-- Exit:  1.5m at north-right  (x: 3.25 to 4.75)                   -->
-    <model name="uvc1_room_walls">
+    <!-- Room: 14m wide (x: -7 to 7), 12m deep (y: -6 to 6), height 2.5m  -->
+    <!-- Entry: 1.5m at south-center (x: -0.75 to 0.75), y: -6            -->
+    <!-- Exit:  1.5m at north-center-left (x: -1.5 to 0.0), y: 6          -->
+    <model name="uvc2_room_walls">
       <static>1</static>
       <pose>0 0 0 0 0 0</pose>
 
+      <!-- South wall left segment: x -7 to -0.75 => length 6.25, center x=-3.875 -->
       <link name="Wall_south_left">
-        <collision name="col"><geometry><box><size>4.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>4.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
-        <pose>-2.875 -4.0 0 0 0 0</pose>
+        <collision name="col"><geometry><box><size>6.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>6.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>-3.875 -6.0 0 0 0 0</pose>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
 
+      <!-- South wall right segment: x 0.75 to 7 => length 6.25, center x=3.875 -->
       <link name="Wall_south_right">
-        <collision name="col"><geometry><box><size>4.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>4.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
-        <pose>2.875 -4.0 0 0 0 0</pose>
+        <collision name="col"><geometry><box><size>6.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>6.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>3.875 -6.0 0 0 0 0</pose>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
 
+      <!-- North wall left segment: x -7 to -1.5 => length 5.5, center x=-4.25 -->
       <link name="Wall_north_left">
-        <collision name="col"><geometry><box><size>8.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>8.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
-        <pose>-0.875 4.0 0 0 0 0</pose>
+        <collision name="col"><geometry><box><size>5.5 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5.5 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>-4.25 6.0 0 0 0 0</pose>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
 
+      <!-- North wall right segment: x 0.0 to 7 => length 7.0, center x=3.5 -->
       <link name="Wall_north_right">
-        <collision name="col"><geometry><box><size>0.4 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.4 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
-        <pose>4.8 4.0 0 0 0 0</pose>
+        <collision name="col"><geometry><box><size>7.0 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>7.0 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>3.5 6.0 0 0 0 0</pose>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
 
+      <!-- West wall: full length 12m -->
       <link name="Wall_west">
-        <collision name="col"><geometry><box><size>0.15 8.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.15 8.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
-        <pose>-5.0 0 0 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.15 12.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.15 12.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>-7.0 0 0 0 0 0</pose>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
 
+      <!-- East wall: full length 12m -->
       <link name="Wall_east">
-        <collision name="col"><geometry><box><size>0.15 8.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
-        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.15 8.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
-        <pose>5.0 0 0 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.15 12.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.15 12.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>7.0 0 0 0 0 0</pose>
         <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
       </link>
 
     </model>
 
-    <!-- ========== CHAIR (center of room: x=0.0, y=0.0) ========== -->
-    <model name="chair">
+    <!-- ========== CORRIDOR 1 (top-left area, wall-height, dark grey) ========== -->
+    <!-- Position: center (-1.5, 2.0), size 5.0 x 1.0 x 2.5                     -->
+    <model name="corridor_1">
       <static>1</static>
-      <pose>0.0 0.0 0 0 0 0</pose>
+      <pose>-1.5 2.0 0 0 0 0</pose>
       <link name="link">
-        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><material><ambient>0.15 0.35 0.70 1</ambient><diffuse>0.15 0.35 0.70 1</diffuse><specular>0.05 0.05 0.10 1</specular></material></visual>
+        <collision name="col"><geometry><box><size>5.0 1.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5.0 1.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== CORRIDOR 2 (bottom-right area, wall-height, dark grey) ========== -->
+    <!-- Position: center (2.5, -1.5), size 5.0 x 1.0 x 2.5                         -->
+    <model name="corridor_2">
+      <static>1</static>
+      <pose>2.5 -1.5 0 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>5.0 1.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5.0 1.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== CHAIR 1 (bottom-left, BLUE, x=-4.5 y=-2.0) ========== -->
+    <model name="chair_1">
+      <static>1</static>
+      <pose>-4.5 -2.0 0 0 0 0</pose>
+      <link name="link">
+        <!-- Seat -->
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><material><ambient>0.10 0.25 0.80 1</ambient><diffuse>0.10 0.25 0.80 1</diffuse><specular>0.05 0.05 0.15 1</specular></material></visual>
         <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
-        <visual name="back_vis"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><material><ambient>0.15 0.35 0.70 1</ambient><diffuse>0.15 0.35 0.70 1</diffuse><specular>0.05 0.05 0.10 1</specular></material></visual>
+        <!-- Backrest -->
+        <visual name="back_vis"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><material><ambient>0.10 0.25 0.80 1</ambient><diffuse>0.10 0.25 0.80 1</diffuse><specular>0.05 0.05 0.15 1</specular></material></visual>
         <collision name="back_col"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Legs -->
         <visual name="leg1_vis"><pose>-0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
         <collision name="leg1_col"><pose>-0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
         <visual name="leg2_vis"><pose>0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
@@ -155,10 +188,133 @@
       </link>
     </model>
 
+    <!-- ========== CHAIR 2 (behind corridor-1, slightly right, RED, x=-3.0 y=3.5) ========== -->
+    <model name="chair_2">
+      <static>1</static>
+      <pose>-3.0 3.5 0 0 0 0</pose>
+      <link name="link">
+        <!-- Seat -->
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><material><ambient>0.80 0.10 0.10 1</ambient><diffuse>0.80 0.10 0.10 1</diffuse><specular>0.15 0.05 0.05 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Backrest -->
+        <visual name="back_vis"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><material><ambient>0.80 0.10 0.10 1</ambient><diffuse>0.80 0.10 0.10 1</diffuse><specular>0.15 0.05 0.05 1</specular></material></visual>
+        <collision name="back_col"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Legs -->
+        <visual name="leg1_vis"><pose>-0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg1_col"><pose>-0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg2_vis"><pose>0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg2_col"><pose>0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg3_vis"><pose>-0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg3_col"><pose>-0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg4_vis"><pose>0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg4_col"><pose>0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== ROUND TABLE (top-right, BROWN, x=4.5 y=3.0) ========== -->
+    <model name="round_table">
+      <static>1</static>
+      <pose>4.5 3.0 0 0 0 0</pose>
+      <link name="link">
+        <!-- Tabletop (cylinder) -->
+        <visual name="top_vis"><pose>0 0 0.75 0 0 0</pose><geometry><cylinder><radius>0.80</radius><length>0.06</length></cylinder></geometry><material><ambient>0.40 0.20 0.06 1</ambient><diffuse>0.40 0.20 0.06 1</diffuse><specular>0.12 0.08 0.03 1</specular></material></visual>
+        <collision name="top_col"><pose>0 0 0.75 0 0 0</pose><geometry><cylinder><radius>0.80</radius><length>0.06</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Single center pedestal leg -->
+        <visual name="leg_vis"><pose>0 0 0.375 0 0 0</pose><geometry><cylinder><radius>0.09</radius><length>0.75</length></cylinder></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg_col"><pose>0 0 0.375 0 0 0</pose><geometry><cylinder><radius>0.09</radius><length>0.75</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== CHAIR AT ROUND TABLE - LEFT (BROWN, x=3.3 y=3.0, backrest faces right) ========== -->
+    <model name="round_table_chair_1">
+      <static>1</static>
+      <pose>3.3 3.0 0 0 0 0</pose>
+      <link name="link">
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="back_vis"><pose>-0.22 0 0.70 0 0 0</pose><geometry><box><size>0.06 0.45 0.50</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="back_col"><pose>-0.22 0 0.70 0 0 0</pose><geometry><box><size>0.06 0.45 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg1_vis"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg1_col"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg2_vis"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg2_col"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg3_vis"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg3_col"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg4_vis"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg4_col"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== CHAIR AT ROUND TABLE - RIGHT (BROWN, x=5.7 y=3.0, backrest faces left) ========== -->
+    <model name="round_table_chair_2">
+      <static>1</static>
+      <pose>5.7 3.0 0 0 0 0</pose>
+      <link name="link">
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="back_vis"><pose>0.22 0 0.70 0 0 0</pose><geometry><box><size>0.06 0.45 0.50</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="back_col"><pose>0.22 0 0.70 0 0 0</pose><geometry><box><size>0.06 0.45 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg1_vis"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg1_col"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg2_vis"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg2_col"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg3_vis"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg3_col"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg4_vis"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg4_col"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== CHAIR AT ROUND TABLE - TOP (BROWN, x=4.5 y=4.1, backrest faces south) ========== -->
+    <model name="round_table_chair_3">
+      <static>1</static>
+      <pose>4.5 4.1 0 0 0 0</pose>
+      <link name="link">
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="back_vis"><pose>0 0.22 0.70 0 0 0</pose><geometry><box><size>0.45 0.06 0.50</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="back_col"><pose>0 0.22 0.70 0 0 0</pose><geometry><box><size>0.45 0.06 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg1_vis"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg1_col"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg2_vis"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg2_col"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg3_vis"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg3_col"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg4_vis"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg4_col"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== CHAIR AT ROUND TABLE - BOTTOM (BROWN, x=4.5 y=1.9, backrest faces north) ========== -->
+    <model name="round_table_chair_4">
+      <static>1</static>
+      <pose>4.5 1.9 0 0 0 0</pose>
+      <link name="link">
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.45 0.45 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="back_vis"><pose>0 -0.22 0.70 0 0 0</pose><geometry><box><size>0.45 0.06 0.50</size></box></geometry><material><ambient>0.45 0.22 0.07 1</ambient><diffuse>0.45 0.22 0.07 1</diffuse><specular>0.10 0.06 0.02 1</specular></material></visual>
+        <collision name="back_col"><pose>0 -0.22 0.70 0 0 0</pose><geometry><box><size>0.45 0.06 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg1_vis"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg1_col"><pose>-0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg2_vis"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg2_col"><pose>0.20 -0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg3_vis"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg3_col"><pose>-0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg4_vis"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.25 0.12 0.04 1</ambient><diffuse>0.25 0.12 0.04 1</diffuse></material></visual>
+        <collision name="leg4_col"><pose>0.20 0.20 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
     <!-- ========== GUI CAMERA ========== -->
     <gui fullscreen="0">
       <camera name="user_camera">
-        <pose>0 -12 15 0 0.785 1.5708</pose>
+        <pose>0 -18 20 0 0.785 1.5708</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
       </camera>

@@ -1,0 +1,299 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <world name="uvc4_room">
+
+    <!-- ========== GAZEBO ROS PLUGINS ========== -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>10.0</update_rate>
+    </plugin>
+
+    <!-- ========== LIGHTING ========== -->
+    <light name="sun" type="directional">
+      <cast_shadows>0</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.6 0.6 0.6 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>0 0 -1</direction>
+      <spot><inner_angle>0</inner_angle><outer_angle>0</outer_angle><falloff>0</falloff></spot>
+    </light>
+
+    <!-- ========== PHYSICS ========== -->
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+    <physics type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <!-- ========== SCENE ========== -->
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.5 0.5 0.5 1</background>
+      <shadows>0</shadows>
+    </scene>
+
+    <audio><device>default</device></audio>
+    <wind/>
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <latitude_deg>0</latitude_deg>
+      <longitude_deg>0</longitude_deg>
+      <elevation>0</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
+
+    <!-- ========== GROUND PLANE ========== -->
+    <model name="ground_plane">
+      <static>1</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <surface>
+            <friction><ode><mu>100</mu><mu2>50</mu2></ode><torsional><ode/></torsional></friction>
+            <contact><ode/></contact>
+            <bounce/>
+          </surface>
+          <max_contacts>10</max_contacts>
+        </collision>
+        <visual name="visual">
+          <cast_shadows>0</cast_shadows>
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material>
+        </visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== ROOM WALLS ========== -->
+    <!-- Room: 14m wide (x: -7 to 7), 10m deep (y: -5 to 5), height 2.5m -->
+    <!-- Entry: south-center (x: -0.75 to 0.75), y: -5                    -->
+    <model name="uvc4_room_walls">
+      <static>1</static>
+      <pose>0 0 0 0 0 0</pose>
+
+      <!-- South wall left: x -7 to -0.75 => length 6.25, center x=-3.875 -->
+      <link name="Wall_south_left">
+        <collision name="col"><geometry><box><size>6.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>6.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>-3.875 -5.0 0 0 0 0</pose>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+
+      <!-- South wall right: x 0.75 to 7 => length 6.25, center x=3.875 -->
+      <link name="Wall_south_right">
+        <collision name="col"><geometry><box><size>6.25 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>6.25 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>3.875 -5.0 0 0 0 0</pose>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+
+      <!-- North wall: full 14m -->
+      <link name="Wall_north">
+        <collision name="col"><geometry><box><size>14.0 0.15 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>14.0 0.15 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>0 5.0 0 0 0 0</pose>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+
+      <!-- West wall: full 10m -->
+      <link name="Wall_west">
+        <collision name="col"><geometry><box><size>0.15 10.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.15 10.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>-7.0 0 0 0 0 0</pose>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+
+      <!-- East wall: full 10m -->
+      <link name="Wall_east">
+        <collision name="col"><geometry><box><size>0.15 10.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.15 10.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/Grey</n></script></material></visual>
+        <pose>7.0 0 0 0 0 0</pose>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+
+    </model>
+
+    <!-- ========== CORRIDOR (left-center, wall-height, dark grey) ========== -->
+    <!-- center: (-2.5, -0.5), size: 5.0 x 1.0 x 2.5                        -->
+    <model name="corridor">
+      <static>1</static>
+      <pose>-2.5 -0.5 0 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>5.0 1.0 2.5</size></box></geometry><pose>0 0 1.25 0 0 0</pose><max_contacts>10</max_contacts><surface><contact><ode/></contact><bounce/><friction><torsional><ode/></torsional><ode/></friction></surface></collision>
+        <visual name="vis"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>5.0 1.0 2.5</size></box></geometry><material><script><uri>file://media/materials/scripts/gazebo.material</uri><n>Gazebo/DarkGrey</n></script></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== TV STAND + TV (top-left, x=-5.8 y=3.0, rotated 135deg left) ========== -->
+    <model name="tv_stand">
+      <static>1</static>
+      <pose>-5.8 3.0 0 0 0 1.571</pose>
+      <link name="link">
+        <!-- Stand body -->
+        <visual name="body_vis"><pose>0 0 0.30 0 0 0</pose><geometry><box><size>1.40 0.40 0.60</size></box></geometry><material><ambient>0.18 0.12 0.06 1</ambient><diffuse>0.18 0.12 0.06 1</diffuse><specular>0.05 0.03 0.02 1</specular></material></visual>
+        <collision name="body_col"><pose>0 0 0.30 0 0 0</pose><geometry><box><size>1.40 0.40 0.60</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Stand legs (4 small feet) -->
+        <visual name="leg1_vis"><pose>-0.65 -0.18 0.03 0 0 0</pose><geometry><box><size>0.06 0.06 0.06</size></box></geometry><material><ambient>0.12 0.08 0.04 1</ambient><diffuse>0.12 0.08 0.04 1</diffuse></material></visual>
+        <visual name="leg2_vis"><pose>0.65 -0.18 0.03 0 0 0</pose><geometry><box><size>0.06 0.06 0.06</size></box></geometry><material><ambient>0.12 0.08 0.04 1</ambient><diffuse>0.12 0.08 0.04 1</diffuse></material></visual>
+        <visual name="leg3_vis"><pose>-0.65 0.18 0.03 0 0 0</pose><geometry><box><size>0.06 0.06 0.06</size></box></geometry><material><ambient>0.12 0.08 0.04 1</ambient><diffuse>0.12 0.08 0.04 1</diffuse></material></visual>
+        <visual name="leg4_vis"><pose>0.65 0.18 0.03 0 0 0</pose><geometry><box><size>0.06 0.06 0.06</size></box></geometry><material><ambient>0.12 0.08 0.04 1</ambient><diffuse>0.12 0.08 0.04 1</diffuse></material></visual>
+        <!-- TV screen (flat panel) -->
+        <visual name="tv_vis"><pose>0 -0.22 1.05 0 0 0</pose><geometry><box><size>1.20 0.06 0.70</size></box></geometry><material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse><specular>0.20 0.20 0.20 1</specular></material></visual>
+        <collision name="tv_col"><pose>0 -0.22 1.05 0 0 0</pose><geometry><box><size>1.20 0.06 0.70</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- TV screen display (dark blue-grey) -->
+        <visual name="screen_vis"><pose>0 -0.19 1.05 0 0 0</pose><geometry><box><size>1.10 0.01 0.62</size></box></geometry><material><ambient>0.05 0.08 0.15 1</ambient><diffuse>0.05 0.08 0.15 1</diffuse></material></visual>
+        <!-- TV neck -->
+        <visual name="neck_vis"><pose>0 -0.10 0.68 0 0 0</pose><geometry><box><size>0.08 0.08 0.08</size></box></geometry><material><ambient>0.10 0.10 0.10 1</ambient><diffuse>0.10 0.10 0.10 1</diffuse></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== SOFA (center-left, x=-1.0 y=2.5, rotated 135deg right) ========== -->
+    <!-- Large sofa with good clearance on all sides                                  -->
+    <model name="sofa">
+      <static>1</static>
+      <pose>-1.0 2.5 0 0 0 -1.571</pose>
+      <link name="link">
+        <!-- Seat base -->
+        <visual name="seat_vis"><pose>0 0 0.22 0 0 0</pose><geometry><box><size>1.80 0.85 0.44</size></box></geometry><material><ambient>0.35 0.20 0.50 1</ambient><diffuse>0.35 0.20 0.50 1</diffuse><specular>0.05 0.03 0.07 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.22 0 0 0</pose><geometry><box><size>1.80 0.85 0.44</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Backrest -->
+        <visual name="back_vis"><pose>0 0.40 0.65 0 0 0</pose><geometry><box><size>1.80 0.12 0.50</size></box></geometry><material><ambient>0.35 0.20 0.50 1</ambient><diffuse>0.35 0.20 0.50 1</diffuse><specular>0.05 0.03 0.07 1</specular></material></visual>
+        <collision name="back_col"><pose>0 0.40 0.65 0 0 0</pose><geometry><box><size>1.80 0.12 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Left armrest -->
+        <visual name="arm_l_vis"><pose>-0.90 0.10 0.52 0 0 0</pose><geometry><box><size>0.12 0.70 0.20</size></box></geometry><material><ambient>0.28 0.16 0.40 1</ambient><diffuse>0.28 0.16 0.40 1</diffuse></material></visual>
+        <collision name="arm_l_col"><pose>-0.90 0.10 0.52 0 0 0</pose><geometry><box><size>0.12 0.70 0.20</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Right armrest -->
+        <visual name="arm_r_vis"><pose>0.90 0.10 0.52 0 0 0</pose><geometry><box><size>0.12 0.70 0.20</size></box></geometry><material><ambient>0.28 0.16 0.40 1</ambient><diffuse>0.28 0.16 0.40 1</diffuse></material></visual>
+        <collision name="arm_r_col"><pose>0.90 0.10 0.52 0 0 0</pose><geometry><box><size>0.12 0.70 0.20</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Sofa feet -->
+        <visual name="foot1_vis"><pose>-0.82 -0.38 0.05 0 0 0</pose><geometry><box><size>0.08 0.08 0.10</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <visual name="foot2_vis"><pose>0.82 -0.38 0.05 0 0 0</pose><geometry><box><size>0.08 0.08 0.10</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <visual name="foot3_vis"><pose>-0.82 0.38 0.05 0 0 0</pose><geometry><box><size>0.08 0.08 0.10</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <visual name="foot4_vis"><pose>0.82 0.38 0.05 0 0 0</pose><geometry><box><size>0.08 0.08 0.10</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== FLOOR LAMP (bottom-left, x=-5.0 y=-1.5) ========== -->
+    <model name="floor_lamp">
+      <static>1</static>
+      <pose>-5.0 -1.5 0 0 0 0</pose>
+      <link name="link">
+        <!-- Base disc -->
+        <visual name="base_vis"><pose>0 0 0.05 0 0 0</pose><geometry><cylinder><radius>0.22</radius><length>0.10</length></cylinder></geometry><material><ambient>0.30 0.30 0.30 1</ambient><diffuse>0.30 0.30 0.30 1</diffuse><specular>0.20 0.20 0.20 1</specular></material></visual>
+        <collision name="base_col"><pose>0 0 0.05 0 0 0</pose><geometry><cylinder><radius>0.22</radius><length>0.10</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Pole -->
+        <visual name="pole_vis"><pose>0 0 0.90 0 0 0</pose><geometry><cylinder><radius>0.025</radius><length>1.60</length></cylinder></geometry><material><ambient>0.55 0.55 0.55 1</ambient><diffuse>0.55 0.55 0.55 1</diffuse><specular>0.30 0.30 0.30 1</specular></material></visual>
+        <collision name="pole_col"><pose>0 0 0.90 0 0 0</pose><geometry><cylinder><radius>0.025</radius><length>1.60</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Lamp shade (cone approximated as cylinder) -->
+        <visual name="shade_vis"><pose>0 0 1.75 0 0 0</pose><geometry><cylinder><radius>0.20</radius><length>0.25</length></cylinder></geometry><material><ambient>0.90 0.85 0.60 1</ambient><diffuse>0.90 0.85 0.60 1</diffuse><specular>0.10 0.10 0.05 1</specular></material></visual>
+        <collision name="shade_col"><pose>0 0 1.75 0 0 0</pose><geometry><cylinder><radius>0.20</radius><length>0.25</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Lamp top cap -->
+        <visual name="cap_vis"><pose>0 0 1.89 0 0 0</pose><geometry><cylinder><radius>0.08</radius><length>0.04</length></cylinder></geometry><material><ambient>0.30 0.30 0.30 1</ambient><diffuse>0.30 0.30 0.30 1</diffuse></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== DINING TABLE (top-right, x=3.5 y=3.0) ========== -->
+    <model name="dining_table">
+      <static>1</static>
+      <pose>3.5 3.0 0 0 0 0</pose>
+      <link name="link">
+        <!-- Tabletop -->
+        <visual name="top_vis"><pose>0 0 0.75 0 0 0</pose><geometry><box><size>1.60 0.90 0.06</size></box></geometry><material><ambient>0.50 0.28 0.10 1</ambient><diffuse>0.50 0.28 0.10 1</diffuse><specular>0.18 0.12 0.05 1</specular></material></visual>
+        <collision name="top_col"><pose>0 0 0.75 0 0 0</pose><geometry><box><size>1.60 0.90 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Leg FL -->
+        <visual name="leg_fl_vis"><pose>-0.74 -0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><material><ambient>0.32 0.18 0.06 1</ambient><diffuse>0.32 0.18 0.06 1</diffuse></material></visual>
+        <collision name="leg_fl_col"><pose>-0.74 -0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Leg FR -->
+        <visual name="leg_fr_vis"><pose>0.74 -0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><material><ambient>0.32 0.18 0.06 1</ambient><diffuse>0.32 0.18 0.06 1</diffuse></material></visual>
+        <collision name="leg_fr_col"><pose>0.74 -0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Leg RL -->
+        <visual name="leg_rl_vis"><pose>-0.74 0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><material><ambient>0.32 0.18 0.06 1</ambient><diffuse>0.32 0.18 0.06 1</diffuse></material></visual>
+        <collision name="leg_rl_col"><pose>-0.74 0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Leg RR -->
+        <visual name="leg_rr_vis"><pose>0.74 0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><material><ambient>0.32 0.18 0.06 1</ambient><diffuse>0.32 0.18 0.06 1</diffuse></material></visual>
+        <collision name="leg_rr_col"><pose>0.74 0.42 0.375 0 0 0</pose><geometry><box><size>0.07 0.07 0.75</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== DINING TABLE PLATE (center on tabletop at z=0.79) ========== -->
+    <!-- Plate - center -->
+    <model name="plate_2">
+      <static>1</static>
+      <pose>3.5 3.0 0.79 0 0 0</pose>
+      <link name="link">
+        <visual name="vis"><pose>0 0 0 0 0 0</pose><geometry><cylinder><radius>0.16</radius><length>0.02</length></cylinder></geometry><material><ambient>0.92 0.90 0.85 1</ambient><diffuse>0.92 0.90 0.85 1</diffuse><specular>0.30 0.30 0.28 1</specular></material></visual>
+        <collision name="col"><pose>0 0 0 0 0 0</pose><geometry><cylinder><radius>0.16</radius><length>0.02</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="rim_vis"><pose>0 0 0.01 0 0 0</pose><geometry><cylinder><radius>0.16</radius><length>0.005</length></cylinder></geometry><material><ambient>0.80 0.78 0.72 1</ambient><diffuse>0.80 0.78 0.72 1</diffuse></material></visual>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+    <model name="chair_1">
+      <static>1</static>
+      <pose>4.5 1.0 0 0 0 0</pose>
+      <link name="link">
+        <!-- Seat -->
+        <visual name="seat_vis"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><material><ambient>0.10 0.25 0.80 1</ambient><diffuse>0.10 0.25 0.80 1</diffuse><specular>0.05 0.05 0.15 1</specular></material></visual>
+        <collision name="seat_col"><pose>0 0 0.45 0 0 0</pose><geometry><box><size>0.50 0.50 0.06</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Backrest -->
+        <visual name="back_vis"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><material><ambient>0.10 0.25 0.80 1</ambient><diffuse>0.10 0.25 0.80 1</diffuse><specular>0.05 0.05 0.15 1</specular></material></visual>
+        <collision name="back_col"><pose>0 0.24 0.70 0 0 0</pose><geometry><box><size>0.50 0.06 0.50</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Legs -->
+        <visual name="leg1_vis"><pose>-0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg1_col"><pose>-0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg2_vis"><pose>0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg2_col"><pose>0.22 -0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg3_vis"><pose>-0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg3_col"><pose>-0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <visual name="leg4_vis"><pose>0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><material><ambient>0.15 0.10 0.05 1</ambient><diffuse>0.15 0.10 0.05 1</diffuse></material></visual>
+        <collision name="leg4_col"><pose>0.22 0.22 0.225 0 0 0</pose><geometry><box><size>0.05 0.05 0.45</size></box></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== POTTED PLANT (bottom-right, x=4.5 y=-2.5) ========== -->
+    <model name="potted_plant">
+      <static>1</static>
+      <pose>4.5 -2.5 0 0 0 0</pose>
+      <link name="link">
+        <!-- Pot -->
+        <visual name="pot_vis"><pose>0 0 0.22 0 0 0</pose><geometry><cylinder><radius>0.22</radius><length>0.44</length></cylinder></geometry><material><ambient>0.50 0.28 0.10 1</ambient><diffuse>0.50 0.28 0.10 1</diffuse></material></visual>
+        <collision name="pot_col"><pose>0 0 0.22 0 0 0</pose><geometry><cylinder><radius>0.22</radius><length>0.44</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Pot rim -->
+        <visual name="rim_vis"><pose>0 0 0.46 0 0 0</pose><geometry><cylinder><radius>0.24</radius><length>0.04</length></cylinder></geometry><material><ambient>0.40 0.22 0.08 1</ambient><diffuse>0.40 0.22 0.08 1</diffuse></material></visual>
+        <!-- Trunk -->
+        <visual name="trunk_vis"><pose>0 0 0.65 0 0 0</pose><geometry><cylinder><radius>0.05</radius><length>0.35</length></cylinder></geometry><material><ambient>0.25 0.15 0.05 1</ambient><diffuse>0.25 0.15 0.05 1</diffuse></material></visual>
+        <collision name="trunk_col"><pose>0 0 0.65 0 0 0</pose><geometry><cylinder><radius>0.05</radius><length>0.35</length></cylinder></geometry><max_contacts>10</max_contacts></collision>
+        <!-- Foliage -->
+        <visual name="foliage_vis"><pose>0 0 1.05 0 0 0</pose><geometry><sphere><radius>0.32</radius></sphere></geometry><material><ambient>0.10 0.48 0.10 1</ambient><diffuse>0.10 0.48 0.10 1</diffuse></material></visual>
+        <collision name="foliage_col"><pose>0 0 1.05 0 0 0</pose><geometry><sphere><radius>0.32</radius></sphere></geometry><max_contacts>10</max_contacts></collision>
+        <self_collide>0</self_collide><enable_wind>0</enable_wind><kinematic>0</kinematic>
+      </link>
+    </model>
+
+    <!-- ========== GUI CAMERA ========== -->
+    <gui fullscreen="0">
+      <camera name="user_camera">
+        <pose>0 -16 18 0 0.785 1.5708</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+  </world>
+</sdf>

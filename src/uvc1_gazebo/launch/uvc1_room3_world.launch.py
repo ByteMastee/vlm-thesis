@@ -40,7 +40,7 @@ def generate_launch_description():
     world = os.path.join(
         get_package_share_directory("uvc1_gazebo"),
         "worlds",
-        "uvc1_room2.world",
+        "uvc1_room3.world",
     )
 
     gzserver_cmd = IncludeLaunchDescription(
