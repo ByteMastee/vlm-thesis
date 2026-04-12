@@ -30,6 +30,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('dbscan_min_samples', 3)
         self.declare_parameter('ray_length',         8.0)
         self.declare_parameter('process_delay',      95.0)
+        self.declare_parameter('env_frame_interval', 10)
         self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
         image_topic    = self.get_parameter('image_topic').value
@@ -45,6 +46,7 @@ class RosBridgeNode(Node):
         self.dbscan_min_samples = self.get_parameter('dbscan_min_samples').value
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
+        self.env_frame_interval = self.get_parameter('env_frame_interval').value
 
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
@@ -122,7 +124,8 @@ class RosBridgeNode(Node):
             output_dir=self.output_dir,
             ground_truth=self.ground_truth,
             logger=self.get_logger(),
-            tf_buffer=self.tf_buffer
+            tf_buffer=self.tf_buffer,
+            env_frame_interval=self.env_frame_interval
         )
 
         self.rviz_publisher = RvizPublisherNode(

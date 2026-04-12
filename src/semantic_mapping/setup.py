@@ -29,6 +29,7 @@ setup(
             'da3_map_node = semantic_mapping.da3_map_node:main',
             'vlm_test_node = semantic_mapping.vlm_test_node:main',
             'qwen_vlm_test_node = semantic_mapping.qwen_vlm_test_node:main',
+            'vlm_label_node = semantic_mapping.vlm_label_node:main',
         ],
     },
 )

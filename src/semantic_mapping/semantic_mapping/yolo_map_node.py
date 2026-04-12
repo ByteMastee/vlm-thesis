@@ -27,7 +27,8 @@ class YoloMapNode:
         output_dir,
         ground_truth,
         logger,
-        tf_buffer
+        tf_buffer,
+        env_frame_interval=10
     ):
         self.confidence         = confidence
         self.fx                 = fx
@@ -41,6 +42,7 @@ class YoloMapNode:
         self.ground_truth       = ground_truth
         self.logger             = logger
         self.tf_buffer          = tf_buffer
+        self.env_frame_interval = env_frame_interval
 
         self.ray_stack         = {}
         self.candidate_stack   = {}
@@ -51,6 +53,15 @@ class YoloMapNode:
 
         self.total_triangulated = 0
         self.total_skipped      = 0
+        self.processed_frame_count = 0
+
+        # --- Output folders ---
+        self.det_frames_dir = os.path.join(output_dir, 'detections', 'frames')
+        self.det_objects_dir = os.path.join(output_dir, 'detections', 'objects')
+        self.env_frames_dir = os.path.join(output_dir, 'env_frames')
+        os.makedirs(self.det_frames_dir, exist_ok=True)
+        os.makedirs(self.det_objects_dir, exist_ok=True)
+        os.makedirs(self.env_frames_dir, exist_ok=True)
 
         self.logger.info(f'Loading YOLO model: {model_path}')
         self.model = YOLO(model_path)
@@ -71,10 +82,58 @@ class YoloMapNode:
         self.robot_x.append(rx)
         self.robot_y.append(ry)
 
+        self.processed_frame_count += 1
+
+        # --- Save env frame at regular interval ---
+        if self.processed_frame_count % self.env_frame_interval == 0:
+            env_path = os.path.join(
+                self.env_frames_dir,
+                f'env_f{self.processed_frame_count:05d}.jpg'
+            )
+            cv2.imwrite(env_path, img)
+
         results = self.model(img, conf=self.confidence, verbose=False)
 
         frame_rays       = []
         frame_candidates = []
+        frame_has_detection = False
+
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cls_id = int(box.cls[0])
+                label  = self.model.names[cls_id]
+                px_cx  = (x1 + x2) // 2
+                px_cy  = (y1 + y2) // 2
+
+                # --- Save detection frame (whole frame with bbox drawn) ---
+                if not frame_has_detection:
+                    det_frame = img.copy()
+                    frame_has_detection = True
+                cv2.rectangle(det_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(det_frame, label, (x1, y1 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+                # --- Save object crop ---
+                crop_y1 = max(0, y1)
+                crop_y2 = min(img.shape[0], y2)
+                crop_x1 = max(0, x1)
+                crop_x2 = min(img.shape[1], x2)
+                obj_crop = img[crop_y1:crop_y2, crop_x1:crop_x2]
+                if obj_crop.size > 0:
+                    obj_path = os.path.join(
+                        self.det_objects_dir,
+                        f'f{self.processed_frame_count:05d}_{label}.jpg'
+                    )
+                    cv2.imwrite(obj_path, obj_crop)
+
+        # --- Save detection frame after all boxes drawn ---
+        if frame_has_detection:
+            frame_path = os.path.join(
+                self.det_frames_dir,
+                f'f{self.processed_frame_count:05d}.jpg'
+            )
+            cv2.imwrite(frame_path, det_frame)
 
         for result in results:
             for box in result.boxes:
