@@ -30,6 +30,7 @@ setup(
             'vlm_test_node = semantic_mapping.vlm_test_node:main',
             'qwen_vlm_test_node = semantic_mapping.qwen_vlm_test_node:main',
             'vlm_label_node = semantic_mapping.vlm_label_node:main',
+            'vlm_rviz_node = semantic_mapping.vlm_rviz_node:main',
         ],
     },
 )

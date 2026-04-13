@@ -131,6 +131,32 @@ class RvizPublisherNode:
 
         return marker_array
 
+    # --- VLM map markers (called once after vlm_object_stack is loaded) ---
+    def build_vlm_marker_array(self, vlm_object_stack, clock):
+        marker_array = MarkerArray()
+        marker_id    = 0
+
+        for label, data in vlm_object_stack.items():
+            ox = data['x']
+            oy = data['y']
+            marker_array.markers.append(self._make_sphere_marker(
+                marker_id, ox, oy, 'vlm_detected',
+                ColorRGBA(r=0.0, g=0.4, b=1.0, a=1.0), clock,
+                scale=0.25
+            ))
+            marker_id += 1
+            yolo_label = data.get('yolo_label', label)
+            marker_array.markers.append(self._make_text_marker(
+                marker_id, ox, oy,
+                f'VLM: {label}\n(YOLO: {yolo_label})\n({ox:.2f},{oy:.2f})',
+                'vlm_detected_labels',
+                ColorRGBA(r=0.0, g=0.4, b=1.0, a=1.0), clock
+            ))
+            marker_id += 1
+
+        self.logger.info(f'VLM marker array built — {len(marker_array.markers)} markers.')
+        return marker_array
+
     # --- Private helpers ---
 
     def _make_sphere_marker(self, marker_id, x, y, ns, color, clock, scale=0.2):

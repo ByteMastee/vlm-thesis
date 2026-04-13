@@ -19,25 +19,28 @@ class VlmLabelNode(Node):
         # --- Parameters ---
         self.declare_parameter('output_dir',       '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output')
         self.declare_parameter('model_path',       '/root/UVC_ws/models/qwen2.5-vl-3b')
-        self.declare_parameter('max_new_tokens',   256)
-        self.declare_parameter('env_sample_count', 25)
+        self.declare_parameter('max_new_tokens',   128)
+        self.declare_parameter('env_sample_count',    5)
+        self.declare_parameter('vlm_conf_threshold',  0.7)
 
-        self.output_dir       = self.get_parameter('output_dir').value
-        self.model_path       = self.get_parameter('model_path').value
-        self.max_new_tokens   = self.get_parameter('max_new_tokens').value
-        self.env_sample_count = self.get_parameter('env_sample_count').value
+        self.output_dir          = self.get_parameter('output_dir').value
+        self.model_path          = self.get_parameter('model_path').value
+        self.max_new_tokens      = self.get_parameter('max_new_tokens').value
+        self.env_sample_count    = self.get_parameter('env_sample_count').value
+        self.vlm_conf_threshold  = self.get_parameter('vlm_conf_threshold').value
 
         # --- Folder paths ---
-        self.det_frames_dir = os.path.join(self.output_dir, 'detections', 'frames')
+        self.det_frames_dir  = os.path.join(self.output_dir, 'detections', 'frames')
         self.det_objects_dir = os.path.join(self.output_dir, 'detections', 'objects')
-        self.env_frames_dir = os.path.join(self.output_dir, 'env_frames')
-        self.vlm_output_path = os.path.join(self.output_dir, 'vlm_labels.json')
+        self.env_frames_dir  = os.path.join(self.output_dir, 'env_frames')
+        self.vlm_output_path = os.path.join(self.output_dir, 'vlm_labels4.json')
 
         self.get_logger().info('vlm_label_node starting...')
         self.get_logger().info(f'  output_dir       : {self.output_dir}')
         self.get_logger().info(f'  model_path       : {self.model_path}')
         self.get_logger().info(f'  max_new_tokens   : {self.max_new_tokens}')
-        self.get_logger().info(f'  env_sample_count : {self.env_sample_count}')
+        self.get_logger().info(f'  env_sample_count    : {self.env_sample_count}')
+        self.get_logger().info(f'  vlm_conf_threshold  : {self.vlm_conf_threshold}')
 
         # --- Load model ---
         self._load_model()
@@ -76,7 +79,7 @@ class VlmLabelNode(Node):
 
         # Step 2 — For each object crop, get improved VLM label
         results = {}
-        obj_files = sorted(os.listdir(self.det_objects_dir))
+        obj_files = sorted([f for f in os.listdir(self.det_objects_dir) if f.endswith('.jpg')])
 
         if not obj_files:
             self.get_logger().warn('No object crops found. Run ros_node first.')
@@ -85,23 +88,40 @@ class VlmLabelNode(Node):
         self.get_logger().info(f'Processing {len(obj_files)} object crops...')
 
         for obj_file in obj_files:
-            if not obj_file.endswith('.jpg'):
-                continue
-
             obj_path = os.path.join(self.det_objects_dir, obj_file)
 
-            # Parse frame number from filename: f00042_chair.jpg
+            # Parse frame_id, yolo_label, confidence from filename: f00042_chair_0.87.jpg
             name_no_ext = os.path.splitext(obj_file)[0]
-            parts = name_no_ext.split('_', 1)
-            frame_id = parts[0]                          # e.g. f00042
-            yolo_label = parts[1] if len(parts) > 1 else 'unknown'
+            parts = name_no_ext.rsplit('_', 1)
+            try:
+                yolo_conf = float(parts[1])
+                label_part = parts[0]
+            except (ValueError, IndexError):
+                yolo_conf = 1.0
+                label_part = name_no_ext
+            frame_id   = label_part.split('_', 1)[0]
+            yolo_label = label_part.split('_', 1)[1] if '_' in label_part else 'unknown'
 
             # Find matching detection frame
             det_frame_path = os.path.join(self.det_frames_dir, f'{frame_id}.jpg')
             if not os.path.exists(det_frame_path):
                 det_frame_path = None
 
-            t_start = time.time()
+            # --- Confidence filter ---
+            if yolo_conf < self.vlm_conf_threshold:
+                self.get_logger().info(
+                    f'[{obj_file}] YOLO: "{yolo_label}" conf={yolo_conf:.2f} -> SKIPPED (low confidence)'
+                )
+                results[obj_file] = {
+                    'yolo_label'     : yolo_label,
+                    'yolo_conf'      : round(yolo_conf, 3),
+                    'vlm_label'      : 'none',
+                    'frame_id'       : frame_id,
+                    'inference_time' : 0.0
+                }
+                continue
+
+            t_start   = time.time()
             vlm_label = self._get_vlm_label(
                 obj_path=obj_path,
                 det_frame_path=det_frame_path,
@@ -110,26 +130,38 @@ class VlmLabelNode(Node):
             )
             elapsed = time.time() - t_start
 
-            self.get_logger().info(
-                f'[{obj_file}] YOLO: "{yolo_label}" → VLM: "{vlm_label}" ({elapsed:.2f}s)'
-            )
+            # --- Deduplicate repeated words in label ---
+            vlm_label = self._clean_label(vlm_label)
+
+            if vlm_label == 'none':
+                self.get_logger().info(
+                    f'[{obj_file}] YOLO: "{yolo_label}" conf={yolo_conf:.2f} -> VLM: REJECTED ({elapsed:.2f}s)'
+                )
+            else:
+                self.get_logger().info(
+                    f'[{obj_file}] YOLO: "{yolo_label}" conf={yolo_conf:.2f} -> VLM: "{vlm_label}" ({elapsed:.2f}s)'
+                )
 
             results[obj_file] = {
                 'yolo_label'     : yolo_label,
+                'yolo_conf'      : round(yolo_conf, 3),
                 'vlm_label'      : vlm_label,
                 'frame_id'       : frame_id,
                 'inference_time' : round(elapsed, 3)
             }
 
-        # Step 3 — Save results
+        # Step 3 — Save per-crop results
         with open(self.vlm_output_path, 'w') as f:
             json.dump(results, f, indent=2)
 
         self.get_logger().info(f'VLM labels saved: {self.vlm_output_path}')
         self.get_logger().info(f'Total objects processed: {len(results)}')
 
+        # Step 4 — Majority vote per YOLO cluster -> vlm_object_stack.json
+        self._build_vlm_object_stack(results)
+
     # -----------------------------------------------------------------------
-    # Step 1 — Environment context
+    # Step 1 — Environment context (one frame at a time)
     # -----------------------------------------------------------------------
 
     def _get_env_context(self):
@@ -141,27 +173,54 @@ class VlmLabelNode(Node):
             self.get_logger().warn('No env frames found. Env context will be empty.')
             return 'No environment context available.'
 
-        # Random sample
         sample = random.sample(env_files, min(self.env_sample_count, len(env_files)))
         self.get_logger().info(f'Env frames sampled: {sample}')
 
         env_prompt = (
             'You are a robot perception system analyzing an indoor environment. '
-            'Look at these images from different viewpoints of the same room. '
-            'Describe the environment in 2-3 sentences: what type of room is it, '
-            'what is the general layout, and what major furniture or objects are present. '
+            'Describe this image in 1-2 sentences: what type of room is it, '
+            'what is visible, and what major furniture or objects are present. '
             'Be concise and factual.'
         )
 
-        image_contents = []
+        descriptions = []
         for fname in sample:
-            image_contents.append({
-                'type': 'image',
-                'image': os.path.join(self.env_frames_dir, fname)
-            })
-        image_contents.append({'type': 'text', 'text': env_prompt})
+            img_path = os.path.join(self.env_frames_dir, fname)
+            content  = [
+                {'type': 'image', 'image': img_path},
+                {'type': 'text',  'text': env_prompt}
+            ]
+            desc = self._query_vlm(content, max_new_tokens=96)
+            if desc:
+                descriptions.append(desc)
+                self.get_logger().info(f'Env [{fname}]: {desc}')
+            torch.cuda.empty_cache()
 
-        return self._query_vlm(image_contents, max_new_tokens=256)
+        if not descriptions:
+            return 'No environment context available.'
+
+        return ' '.join(descriptions)
+
+    # -----------------------------------------------------------------------
+    # Label cleanup
+    # -----------------------------------------------------------------------
+
+    def _clean_label(self, label):
+        """Remove duplicate words and run-together repeated substrings."""
+        import re
+        if not label:
+            return label
+        label = label.lower().strip()
+        # Fix run-together repeat: 'wooden tabletable' -> 'wooden table'
+        # Matches a word that immediately repeats itself without a space
+        label = re.sub(r'\b(\w+)\1\b', r'\1', label)
+        # Remove consecutive duplicate words: 'table table' -> 'table'
+        words = label.split()
+        deduped = [words[0]]
+        for w in words[1:]:
+            if w != deduped[-1]:
+                deduped.append(w)
+        return ' '.join(deduped)
 
     # -----------------------------------------------------------------------
     # Step 2 — Per-object VLM label
@@ -169,24 +228,21 @@ class VlmLabelNode(Node):
 
     def _get_vlm_label(self, obj_path, det_frame_path, yolo_label, env_context):
         object_prompt = (
-            f'You are a robot perception system. '
+            f'You are a robot perception system in an indoor environment. '
             f'Environment context: {env_context} '
-            f'YOLO has detected an object and labelled it as "{yolo_label}". '
-            f'You are given two images: '
-            f'1) The full camera frame where the object was detected. '
-            f'2) A cropped image of the detected object. '
-            f'Based on the object crop, the detection frame, and the environment context, '
-            f'provide an improved and specific label for this object. '
-            f'Reply with only the label — a short noun phrase, no explanation.'
+            f'YOLO detected an object and labelled it as "{yolo_label}". '
+            f'You are given a cropped image of that detected object. '
+            f'Task: Provide a short improved label for the object in the crop. '
+            f'Rules: '
+            f'1. If the crop shows a real indoor object, reply with a specific short label (e.g. blue chair, wooden table, dark sofa). '
+            f'2. If the crop is a false detection or shows something impossible indoors (e.g. airplane, outdoor sign), reply with the single word: none '
+            f'Reply with the label only. No explanation.'
         )
 
-        image_contents = []
-
-        if det_frame_path and os.path.exists(det_frame_path):
-            image_contents.append({'type': 'image', 'image': det_frame_path})
-
-        image_contents.append({'type': 'image', 'image': obj_path})
-        image_contents.append({'type': 'text',  'text': object_prompt})
+        image_contents = [
+            {'type': 'image', 'image': obj_path},
+            {'type': 'text',  'text': object_prompt}
+        ]
 
         result = self._query_vlm(image_contents, max_new_tokens=self.max_new_tokens)
         return result if result else yolo_label
@@ -220,11 +276,88 @@ class VlmLabelNode(Node):
                 skip_special_tokens=True
             ).strip()
 
+            del inputs, output
+            torch.cuda.empty_cache()
+
             return response if response else None
 
         except Exception as e:
             self.get_logger().warn(f'VLM inference error: {e}')
+            torch.cuda.empty_cache()
             return None
+
+
+    # -----------------------------------------------------------------------
+    # Step 4 — Majority vote per YOLO cluster -> vlm_object_stack.json
+    # -----------------------------------------------------------------------
+
+    def _build_vlm_object_stack(self, results):
+        # Load existing YOLO object_stack
+        yolo_stack_candidates = [
+            f for f in os.listdir(self.output_dir)
+            if f.startswith('E1_object') and f.endswith('.json')
+        ]
+        if not yolo_stack_candidates:
+            self.get_logger().warn('No E1_object*.json found in output_dir. Skipping vlm_object_stack.')
+            return
+
+        yolo_stack_path = os.path.join(self.output_dir, sorted(yolo_stack_candidates)[-1])
+        with open(yolo_stack_path, 'r') as f:
+            yolo_stack = json.load(f)
+        self.get_logger().info(f'Loaded YOLO object stack: {yolo_stack_path}')
+
+        # Group VLM labels by base YOLO label (strip _1, _2 suffixes)
+        # e.g. 'chair_1', 'chair_2' both map to base 'chair'
+        from collections import Counter
+
+        # Build: base_yolo_label -> [vlm_label, ...] from per-crop results
+        vlm_votes = {}  # base_label -> list of vlm_labels
+        for entry in results.values():
+            yolo_label = entry['yolo_label']
+            vlm_label  = entry['vlm_label']
+            if vlm_label == 'none':
+                continue
+            if yolo_label not in vlm_votes:
+                vlm_votes[yolo_label] = []
+            vlm_votes[yolo_label].append(vlm_label)
+
+        # For each cluster in yolo_stack, find majority VLM label
+        vlm_object_stack = {}
+        for cluster_key, data in yolo_stack.items():
+            # Extract base label: 'chair_1' -> 'chair', 'dining table' -> 'dining table'
+            parts = cluster_key.rsplit('_', 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                base_label = parts[0]
+            else:
+                base_label = cluster_key
+
+            if base_label in vlm_votes and vlm_votes[base_label]:
+                majority_label = Counter(vlm_votes[base_label]).most_common(1)[0][0]
+            else:
+                majority_label = base_label  # fallback to YOLO label
+
+            # Assign new key with majority label, preserve cluster index if multiple
+            suffix = f'_{parts[1]}' if len(parts) == 2 and parts[1].isdigit() else ''
+            new_key = f'{majority_label}{suffix}'
+
+            vlm_object_stack[new_key] = {
+                'x'             : data['x'],
+                'y'             : data['y'],
+                'num_candidates': data['num_candidates'],
+                'yolo_label'    : cluster_key,
+                'vlm_label'     : majority_label
+            }
+
+            self.get_logger().info(
+                f'Cluster "{cluster_key}" -> VLM majority: "{majority_label}" '
+                f'(votes: {len(vlm_votes.get(base_label, []))})'
+            )
+
+        # Save vlm_object_stack.json
+        vlm_stack_path = os.path.join(self.output_dir, 'vlm_object_stack2.json')
+        with open(vlm_stack_path, 'w') as f:
+            json.dump(vlm_object_stack, f, indent=2)
+        self.get_logger().info(f'VLM object stack saved: {vlm_stack_path}')
 
 
 def main(args=None):

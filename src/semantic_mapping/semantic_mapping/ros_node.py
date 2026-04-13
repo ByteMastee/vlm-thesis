@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import rclpy
 from rclpy.node import Node
@@ -21,16 +22,16 @@ class RosBridgeNode(Node):
         self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_raw')
         self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
         self.declare_parameter('odom_topic',         '/odom')
-        self.declare_parameter('frame_skip',         7)
+        self.declare_parameter('frame_skip',         12)
         self.declare_parameter('confidence',         0.50)
         self.declare_parameter('model_path',         '/root/yolo26m.pt')
         self.declare_parameter('output_dir',         '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output')
-        self.declare_parameter('min_angle_deg',      9.0)
+        self.declare_parameter('min_angle_deg',      8.0)
         self.declare_parameter('dbscan_eps',         1.0)
         self.declare_parameter('dbscan_min_samples', 3)
         self.declare_parameter('ray_length',         8.0)
         self.declare_parameter('process_delay',      95.0)
-        self.declare_parameter('env_frame_interval', 10)
+        self.declare_parameter('env_frame_interval', 20)
         self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
         image_topic    = self.get_parameter('image_topic').value
@@ -82,8 +83,9 @@ class RosBridgeNode(Node):
         )
 
         # --- Publishers ---
-        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers', latched_qos)
-        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',    10)
+        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
+        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',         10)
+        self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
 
         # --- Subscribers ---
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
@@ -244,6 +246,22 @@ class RosBridgeNode(Node):
         self.get_logger().info(
             f'Final markers published to /semantic_map_markers — {len(marker_array.markers)} markers.'
         )
+
+        # --- Publish VLM markers if vlm_object_stack.json exists ---
+        vlm_stack_path = os.path.join(self.output_dir, 'vlm_object_stack2.json')
+        if os.path.exists(vlm_stack_path):
+            with open(vlm_stack_path, 'r') as f:
+                vlm_object_stack = json.load(f)
+            vlm_markers = self.rviz_publisher.build_vlm_marker_array(
+                vlm_object_stack=vlm_object_stack,
+                clock=self.get_clock()
+            )
+            self.vlm_marker_pub.publish(vlm_markers)
+            self.get_logger().info(
+                f'VLM markers published to /vlm_semantic_map_markers — {len(vlm_markers.markers)} markers.'
+            )
+        else:
+            self.get_logger().info('No vlm_object_stack.json found — VLM markers skipped.')
 
         self.get_logger().info('Processing complete.')
 
