@@ -33,7 +33,7 @@ class VlmLabelNode(Node):
         self.det_frames_dir  = os.path.join(self.output_dir, 'detections', 'frames')
         self.det_objects_dir = os.path.join(self.output_dir, 'detections', 'objects')
         self.env_frames_dir  = os.path.join(self.output_dir, 'env_frames')
-        self.vlm_output_path = os.path.join(self.output_dir, 'vlm_labels4.json')
+        self.vlm_output_path = os.path.join(self.output_dir, 'vlm_labels5.json')
 
         self.get_logger().info('vlm_label_node starting...')
         self.get_logger().info(f'  output_dir       : {self.output_dir}')
@@ -354,7 +354,7 @@ class VlmLabelNode(Node):
             )
 
         # Save vlm_object_stack.json
-        vlm_stack_path = os.path.join(self.output_dir, 'vlm_object_stack2.json')
+        vlm_stack_path = os.path.join(self.output_dir, 'vlm_object_stack5.json')
         with open(vlm_stack_path, 'w') as f:
             json.dump(vlm_object_stack, f, indent=2)
         self.get_logger().info(f'VLM object stack saved: {vlm_stack_path}')
