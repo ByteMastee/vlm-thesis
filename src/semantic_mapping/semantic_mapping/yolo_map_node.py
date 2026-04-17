@@ -14,6 +14,9 @@ import tf2_ros
 from geometry_msgs.msg import PointStamped
 import rclpy
 
+# --- Run name: must match ros_node.py ---
+RUN_NAME = 'run_01'
+
 
 class YoloMapNode:
     def __init__(
@@ -28,7 +31,7 @@ class YoloMapNode:
         ground_truth,
         logger,
         tf_buffer,
-        env_frame_interval=10
+        env_frame_interval=20
     ):
         self.confidence         = confidence
         self.fx                 = fx
@@ -51,17 +54,15 @@ class YoloMapNode:
         self.robot_x = []
         self.robot_y = []
 
-        self.total_triangulated = 0
-        self.total_skipped      = 0
+        self.total_triangulated    = 0
+        self.total_skipped         = 0
         self.processed_frame_count = 0
 
         # --- Output folders ---
-        self.det_frames_dir = os.path.join(output_dir, 'detections', 'frames')
         self.det_objects_dir = os.path.join(output_dir, 'detections', 'objects')
-        self.env_frames_dir = os.path.join(output_dir, 'env_frames')
-        os.makedirs(self.det_frames_dir, exist_ok=True)
+        self.env_frames_dir  = os.path.join(output_dir, 'env_frames')
         os.makedirs(self.det_objects_dir, exist_ok=True)
-        os.makedirs(self.env_frames_dir, exist_ok=True)
+        os.makedirs(self.env_frames_dir,  exist_ok=True)
 
         self.logger.info(f'Loading YOLO model: {model_path}')
         self.model = YOLO(model_path)
@@ -96,52 +97,35 @@ class YoloMapNode:
 
         frame_rays       = []
         frame_candidates = []
-        frame_has_detection = False
 
+        # --- First pass: save object crops ---
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                cls_id = int(box.cls[0])
-                label  = self.model.names[cls_id]
-                px_cx  = (x1 + x2) // 2
-                px_cy  = (y1 + y2) // 2
+                cls_id          = int(box.cls[0])
+                label           = self.model.names[cls_id]
 
-                # --- Save detection frame (whole frame with bbox drawn) ---
-                if not frame_has_detection:
-                    det_frame = img.copy()
-                    frame_has_detection = True
-                cv2.rectangle(det_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(det_frame, label, (x1, y1 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-
-                # --- Save object crop ---
-                crop_y1 = max(0, y1)
-                crop_y2 = min(img.shape[0], y2)
-                crop_x1 = max(0, x1)
-                crop_x2 = min(img.shape[1], x2)
+                crop_y1  = max(0, y1)
+                crop_y2  = min(img.shape[0], y2)
+                crop_x1  = max(0, x1)
+                crop_x2  = min(img.shape[1], x2)
                 obj_crop = img[crop_y1:crop_y2, crop_x1:crop_x2]
                 if obj_crop.size > 0:
-                    obj_path = os.path.join(
+                    safe_label = label.replace(' ', '_')
+                    obj_path   = os.path.join(
                         self.det_objects_dir,
-                        f'f{self.processed_frame_count:05d}_{label}.jpg'
+                        f'f{self.processed_frame_count:05d}_{safe_label}.jpg'
                     )
                     cv2.imwrite(obj_path, obj_crop)
 
-        # --- Save detection frame after all boxes drawn ---
-        if frame_has_detection:
-            frame_path = os.path.join(
-                self.det_frames_dir,
-                f'f{self.processed_frame_count:05d}.jpg'
-            )
-            cv2.imwrite(frame_path, det_frame)
-
+        # --- Second pass: ray casting ---
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                cls_id = int(box.cls[0])
-                label  = self.model.names[cls_id]
-                px_cx  = (x1 + x2) // 2
-                px_cy  = (y1 + y2) // 2
+                cls_id          = int(box.cls[0])
+                label           = self.model.names[cls_id]
+                px_cx           = (x1 + x2) // 2
+                px_cy           = (y1 + y2) // 2
 
                 ray_2d, origin_2d = self._pixel_to_ray_2d(
                     px_cx, px_cy,
@@ -191,22 +175,22 @@ class YoloMapNode:
         return all_candidates
 
     def save_outputs(self):
-        json_path = os.path.join(self.output_dir, 'E1_object4.json')
+        json_path = os.path.join(self.output_dir, f'{RUN_NAME}_object_stack.json')
         with open(json_path, 'w') as f:
             json.dump(self.object_stack, f, indent=2)
-        self.logger.info(f'Object stack saved: {json_path}')
+        self.logger.info(f'[{RUN_NAME}] Object stack saved: {json_path}')
 
         robot_path_data = {'x': self.robot_x, 'y': self.robot_y}
-        robot_path_json = os.path.join(self.output_dir, 'E1_path1.json')
+        robot_path_json = os.path.join(self.output_dir, f'{RUN_NAME}_robot_path.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
-        self.logger.info(f'Robot path saved: {robot_path_json}')
+        self.logger.info(f'[{RUN_NAME}] Robot path saved: {robot_path_json}')
 
         plot_path = self._save_map_plot()
-        self.logger.info(f'Map plot saved: {plot_path}')
+        self.logger.info(f'[{RUN_NAME}] Map plot saved: {plot_path}')
 
-        self.logger.info(f'Total triangulated: {self.total_triangulated}')
-        self.logger.info(f'Total skipped: {self.total_skipped}')
+        self.logger.info(f'[{RUN_NAME}] Total triangulated: {self.total_triangulated}')
+        self.logger.info(f'[{RUN_NAME}] Total skipped: {self.total_skipped}')
 
     # --- Private helpers ---
 
@@ -217,22 +201,18 @@ class YoloMapNode:
         projects the pixel ray into the odom XY plane (z=0, 2D).
 
         Returns:
-            ray_2d   — normalized 2D direction in odom frame (np.array [x, y])
+            ray_2d    — normalized 2D direction in odom frame (np.array [x, y])
             origin_2d — 2D camera origin in odom frame (np.array [x, y])
         """
-        # Step 1: Build unit ray in optical frame
-        # Camera +Z is the viewing direction (forward into the scene)
-        x_cam = (px_cx - self.cx) / self.fx
-        y_cam = (px_cy - self.cy) / self.fy
-        z_cam = 1.0
+        x_cam       = (px_cx - self.cx) / self.fx
+        y_cam       = (px_cy - self.cy) / self.fy
+        z_cam       = 1.0
         ray_optical = np.array([x_cam, y_cam, z_cam])
         ray_optical = ray_optical / np.linalg.norm(ray_optical)
 
-        # Step 2: Reject rays pointing behind the camera (z_cam should be > 0 always here)
         if z_cam <= 0:
             return None, None
 
-        # Step 3: Look up TF — optical_frame -> odom
         try:
             tf_stamped = self.tf_buffer.lookup_transform(
                 'odom',
@@ -244,7 +224,6 @@ class YoloMapNode:
             self.logger.warn(f'TF lookup failed: {e}')
             return None, None
 
-        # Step 4: Extract rotation matrix and translation from TF
         R = self._quat_to_rotation_matrix(tf_stamped.transform.rotation)
         t = np.array([
             tf_stamped.transform.translation.x,
@@ -252,17 +231,14 @@ class YoloMapNode:
             tf_stamped.transform.translation.z
         ])
 
-        # Step 5: Rotate ray into odom frame
         ray_odom_3d = R @ ray_optical
 
-        # Step 6: Project to 2D — take only XY, normalize
         ray_2d = ray_odom_3d[:2]
-        norm = np.linalg.norm(ray_2d)
+        norm   = np.linalg.norm(ray_2d)
         if norm < 1e-6:
             return None, None
         ray_2d = ray_2d / norm
 
-        # Step 7: Camera origin in odom XY
         origin_2d = t[:2]
 
         return ray_2d, origin_2d
@@ -276,12 +252,9 @@ class YoloMapNode:
         2D ray intersection: find closest point between two 2D rays.
         Returns midpoint if both t1 >= 0 and t2 >= 0 (forward direction only).
         """
-        # Solve: o1 + t1*d1 = o2 + t2*d2
-        # [d1 | -d2] * [t1, t2]^T = o2 - o1
-        A = np.array([[d1[0], -d2[0]],
-                      [d1[1], -d2[1]]])
-        b = o2 - o1
-
+        A     = np.array([[d1[0], -d2[0]],
+                          [d1[1], -d2[1]]])
+        b     = o2 - o1
         denom = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]
         if abs(denom) < 1e-6:
             return None
@@ -289,12 +262,11 @@ class YoloMapNode:
         t1 = (b[0] * A[1, 1] - b[1] * A[0, 1]) / denom
         t2 = (A[0, 0] * b[1] - A[1, 0] * b[0]) / denom
 
-        # Reject if either ray points backward (object is behind camera)
         if t1 < 0 or t2 < 0:
             return None
 
-        p1 = o1 + t1 * d1
-        p2 = o2 + t2 * d2
+        p1       = o1 + t1 * d1
+        p2       = o2 + t2 * d2
         midpoint = (p1 + p2) / 2.0
         return midpoint
 
@@ -381,7 +353,7 @@ class YoloMapNode:
 
         if self.robot_x and self.robot_y:
             plt.plot(self.robot_x, self.robot_y, 'b-', linewidth=1.0, alpha=0.5)
-            plt.plot(self.robot_x[0], self.robot_y[0], 'go', markersize=8)
+            plt.plot(self.robot_x[0],  self.robot_y[0],  'go', markersize=8)
             plt.plot(self.robot_x[-1], self.robot_y[-1], 'rs', markersize=8)
 
         for label, (gx, gy) in self.ground_truth.items():
@@ -400,12 +372,12 @@ class YoloMapNode:
                          textcoords='offset points', xytext=(8, -18),
                          fontsize=9, color=color)
 
-            best_dist = float('inf')
+            best_dist        = float('inf')
             best_gx, best_gy = None, None
             for gt_label, (gx, gy) in self.ground_truth.items():
                 dist = np.sqrt((ox - gx)**2 + (oy - gy)**2)
                 if dist < best_dist:
-                    best_dist = dist
+                    best_dist        = dist
                     best_gx, best_gy = gx, gy
 
             if best_gx is not None:
@@ -415,7 +387,7 @@ class YoloMapNode:
 
         plt.xlabel('X (m)')
         plt.ylabel('Y (m)')
-        plt.title('Semantic Map — Detected vs Ground Truth')
+        plt.title(f'Semantic Map — {RUN_NAME} — Detected vs Ground Truth')
         plt.legend(handles=[
             plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                        markersize=10, label='Ground Truth'),
@@ -430,7 +402,7 @@ class YoloMapNode:
         plt.grid(True)
         plt.axis('equal')
 
-        plot_path = os.path.join(self.output_dir, 'E1_map4.png')
+        plot_path = os.path.join(self.output_dir, f'{RUN_NAME}_map.png')
         plt.savefig(plot_path, dpi=150)
         plt.close()
         return plot_path

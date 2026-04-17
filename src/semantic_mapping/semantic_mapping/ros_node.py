@@ -1,9 +1,8 @@
 import os
-import json
 import time
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import MarkerArray
@@ -12,6 +11,11 @@ import tf2_ros
 
 from semantic_mapping.yolo_map_node import YoloMapNode
 from semantic_mapping.rviz_publisher_node import RvizPublisherNode
+
+# --- Run name: change this for each new run ---
+RUN_NAME = 'run_01'
+
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 
 
 class RosBridgeNode(Node):
@@ -25,7 +29,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('frame_skip',         12)
         self.declare_parameter('confidence',         0.50)
         self.declare_parameter('model_path',         '/root/yolo26m.pt')
-        self.declare_parameter('output_dir',         '/root/UVC_ws/vf_robot_model_ros2/semantic_mapping_output')
+        self.declare_parameter('output_dir',         os.path.join(BASE_OUTPUT_DIR, RUN_NAME))
         self.declare_parameter('min_angle_deg',      8.0)
         self.declare_parameter('dbscan_eps',         1.0)
         self.declare_parameter('dbscan_min_samples', 3)
@@ -83,9 +87,8 @@ class RosBridgeNode(Node):
         )
 
         # --- Publishers ---
-        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
-        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',         10)
-        self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
+        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers', latched_qos)
+        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',    10)
 
         # --- Subscribers ---
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
@@ -95,7 +98,9 @@ class RosBridgeNode(Node):
         # --- Process timer ---
         self.create_timer(process_delay, self.process)
 
-        self.get_logger().info(f'ros_node started — process will trigger in {process_delay}s')
+        self.get_logger().info(f'ros_node started | RUN_NAME: {RUN_NAME}')
+        self.get_logger().info(f'output_dir: {self.output_dir}')
+        self.get_logger().info(f'process will trigger in {process_delay}s')
         self.get_logger().info('Start bag playback now.')
 
     # --- Callbacks ---
@@ -171,7 +176,7 @@ class RosBridgeNode(Node):
         self.total_compute_time += frame_elapsed
 
         self.get_logger().info(
-            f'Frame {self.frame_count} processed | '
+            f'[{RUN_NAME}] Frame {self.frame_count} processed | '
             f'count: {self.processed_count} | '
             f'time: {frame_elapsed:.3f}s'
         )
@@ -179,7 +184,6 @@ class RosBridgeNode(Node):
         if rx is None:
             return
 
-        # Live RViz publish — 2D rays
         rays_with_length = [
             (origin_2d, ray_2d, self.ray_length)
             for origin_2d, ray_2d in frame_rays
@@ -207,26 +211,26 @@ class RosBridgeNode(Node):
         self.process_done = True
 
         if not self.is_calibrated:
-            self.get_logger().warn('Process triggered — camera not calibrated, aborting.')
+            self.get_logger().warn(f'[{RUN_NAME}] Process triggered — camera not calibrated, aborting.')
             return
 
         if self.processed_count == 0:
-            self.get_logger().warn('Process triggered — no frames processed, aborting.')
+            self.get_logger().warn(f'[{RUN_NAME}] Process triggered — no frames processed, aborting.')
             return
 
         if self.total_start_time is not None:
             total_elapsed = time.time() - self.total_start_time
             self.get_logger().info(
-                f'Total wall time: {total_elapsed:.3f}s '
+                f'[{RUN_NAME}] Total wall time: {total_elapsed:.3f}s '
                 f'({total_elapsed/60:.2f} min) for {self.processed_count} frames'
             )
             self.get_logger().info(
-                f'Pure compute time: {self.total_compute_time:.3f}s | '
+                f'[{RUN_NAME}] Pure compute time: {self.total_compute_time:.3f}s | '
                 f'avg per frame: {self.total_compute_time/self.processed_count:.4f}s'
             )
 
         object_stack = self.yolo_map_node.get_object_stack()
-        self.get_logger().info(f'Object stack: {list(object_stack.keys())}')
+        self.get_logger().info(f'[{RUN_NAME}] Object stack: {list(object_stack.keys())}')
 
         self.yolo_map_node.save_outputs()
 
@@ -244,26 +248,11 @@ class RosBridgeNode(Node):
 
         self.marker_pub.publish(marker_array)
         self.get_logger().info(
-            f'Final markers published to /semantic_map_markers — {len(marker_array.markers)} markers.'
+            f'[{RUN_NAME}] Final markers published to /semantic_map_markers — '
+            f'{len(marker_array.markers)} markers.'
         )
 
-        # --- Publish VLM markers if vlm_object_stack.json exists ---
-        vlm_stack_path = os.path.join(self.output_dir, 'vlm_object_stack2.json')
-        if os.path.exists(vlm_stack_path):
-            with open(vlm_stack_path, 'r') as f:
-                vlm_object_stack = json.load(f)
-            vlm_markers = self.rviz_publisher.build_vlm_marker_array(
-                vlm_object_stack=vlm_object_stack,
-                clock=self.get_clock()
-            )
-            self.vlm_marker_pub.publish(vlm_markers)
-            self.get_logger().info(
-                f'VLM markers published to /vlm_semantic_map_markers — {len(vlm_markers.markers)} markers.'
-            )
-        else:
-            self.get_logger().info('No vlm_object_stack.json found — VLM markers skipped.')
-
-        self.get_logger().info('Processing complete.')
+        self.get_logger().info(f'[{RUN_NAME}] Processing complete.')
 
 
 def main(args=None):
