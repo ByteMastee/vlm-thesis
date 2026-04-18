@@ -8,6 +8,9 @@ from visualization_msgs.msg import MarkerArray
 
 from semantic_mapping.rviz_publisher_node import RvizPublisherNode
 
+from tf2_ros import StaticTransformBroadcaster
+from geometry_msgs.msg import TransformStamped
+
 # --- Run name: must match ros_node.py ---
 RUN_NAME = 'run_01'
 
@@ -21,6 +24,19 @@ class VlmVizNode(Node):
         # --- Parameters ---
         self.declare_parameter('output_dir',   os.path.join(BASE_OUTPUT_DIR, RUN_NAME))
         self.declare_parameter('ground_truth', ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
+
+        # --- Static TF: map -> odom ---
+        self._static_broadcaster = StaticTransformBroadcaster(self)
+        tf_msg                             = TransformStamped()
+        tf_msg.header.stamp                = self.get_clock().now().to_msg()
+        tf_msg.header.frame_id             = 'map'
+        tf_msg.child_frame_id              = 'odom'
+        tf_msg.transform.translation.x     = 0.0
+        tf_msg.transform.translation.y     = 0.0
+        tf_msg.transform.translation.z     = 0.0
+        tf_msg.transform.rotation.w        = 1.0
+        self._static_broadcaster.sendTransform(tf_msg)
+        self.get_logger().info(f'[{RUN_NAME}] Static TF map -> odom published.')
 
         self.output_dir = self.get_parameter('output_dir').value
         gt_raw          = self.get_parameter('ground_truth').value

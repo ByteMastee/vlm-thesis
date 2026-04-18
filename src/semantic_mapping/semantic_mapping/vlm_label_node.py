@@ -276,6 +276,7 @@ class VlmLabelNode(Node):
     # -----------------------------------------------------------------------
 
     def _build_vlm_object_stack(self, results):
+
         yolo_stack_path = os.path.join(self.output_dir, f'{RUN_NAME}_object_stack.json')
         if not os.path.exists(yolo_stack_path):
             self.get_logger().warn(
@@ -308,7 +309,10 @@ class VlmLabelNode(Node):
             if base_label in vlm_votes and vlm_votes[base_label]:
                 majority_label = Counter(vlm_votes[base_label]).most_common(1)[0][0]
             else:
-                majority_label = base_label
+                self.get_logger().info(
+                    f'[{RUN_NAME}] Cluster "{cluster_key}" -> all crops rejected by VLM, skipping.'
+                )
+                continue
 
             suffix  = f'_{parts[1]}' if len(parts) == 2 and parts[1].isdigit() else ''
             new_key = f'{majority_label}{suffix}'

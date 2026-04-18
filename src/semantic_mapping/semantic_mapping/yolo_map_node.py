@@ -1,5 +1,8 @@
 import os
 import json
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='scipy')
+
 import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
@@ -11,7 +14,6 @@ import matplotlib.pyplot as plt
 from ultralytics import YOLO
 
 import tf2_ros
-from geometry_msgs.msg import PointStamped
 import rclpy
 
 # --- Run name: must match ros_node.py ---
