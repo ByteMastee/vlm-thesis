@@ -4,18 +4,20 @@ import time
 import random
 import re
 import gc
+import threading
 from collections import Counter
 
 import cv2
 import torch
 import rclpy
 from rclpy.node import Node
+from std_srvs.srv import Trigger
 
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 
 # --- Run name: must match ros_node.py ---
-RUN_NAME = 'run_01'
+RUN_NAME = 'run_02'
 
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 
@@ -40,17 +42,28 @@ class VlmLabelNode(Node):
         self.env_frames_dir  = os.path.join(self.output_dir, 'env_frames')
         self.vlm_output_path = os.path.join(self.output_dir, f'{RUN_NAME}_vlm_labels.json')
 
+        # --- State ---
+        self.pipeline_running = False
+
         self.get_logger().info(f'vlm_label_node starting | RUN_NAME: {RUN_NAME}')
         self.get_logger().info(f'  output_dir       : {self.output_dir}')
         self.get_logger().info(f'  model_path       : {self.model_path}')
         self.get_logger().info(f'  max_new_tokens   : {self.max_new_tokens}')
         self.get_logger().info(f'  env_sample_count : {self.env_sample_count}')
 
-        # --- Load model ---
+        # --- Load model at startup ---
         self._load_model()
 
-        # --- Run pipeline ---
-        self._run()
+        # --- Service server: ros_node calls this to trigger VLM pipeline ---
+        self.srv = self.create_service(
+            Trigger,
+            'run_vlm_pipeline',
+            self._vlm_pipeline_service_cb
+        )
+        self.get_logger().info(f'[{RUN_NAME}] VLM pipeline service ready: run_vlm_pipeline')
+
+        # --- Service client: call ros_node when VLM pipeline is complete ---
+        self.notify_client = self.create_client(Trigger, 'vlm_pipeline_done')
 
     # -----------------------------------------------------------------------
     # Model loading
@@ -70,7 +83,61 @@ class VlmLabelNode(Node):
             device_map='cuda:0'
         )
         self.model.eval()
-        self.get_logger().info('Qwen2.5-VL model loaded.')
+        self.get_logger().info(f'[{RUN_NAME}] Qwen2.5-VL model loaded. Waiting for service call...')
+
+    # -----------------------------------------------------------------------
+    # Service callback — triggered by ros_node
+    # -----------------------------------------------------------------------
+
+    def _vlm_pipeline_service_cb(self, request, response):
+        if self.pipeline_running:
+            self.get_logger().warn(f'[{RUN_NAME}] VLM pipeline already running — ignoring call.')
+            response.success = False
+            response.message = 'Pipeline already running.'
+            return response
+
+        self.pipeline_running = True
+        self.get_logger().info(f'[{RUN_NAME}] VLM pipeline service called — starting in background thread.')
+
+        # Run pipeline in separate thread so service returns immediately
+        thread = threading.Thread(target=self._run_pipeline_and_notify, daemon=True)
+        thread.start()
+
+        response.success = True
+        response.message = 'VLM pipeline started.'
+        return response
+
+    # -----------------------------------------------------------------------
+    # Pipeline runner + notify ros_node on completion
+    # -----------------------------------------------------------------------
+
+    def _run_pipeline_and_notify(self):
+        try:
+            success = self._run()
+        except Exception as e:
+            self.get_logger().error(f'[{RUN_NAME}] VLM pipeline error: {e}')
+            success = False
+        finally:
+            self.pipeline_running = False
+
+        # Notify ros_node that VLM pipeline is complete
+        if not self.notify_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().warn(f'[{RUN_NAME}] vlm_pipeline_done service not available — skipping notify.')
+            return
+
+        notify_request = Trigger.Request()
+        future = self.notify_client.call_async(notify_request)
+        future.add_done_callback(self._notify_done_cb)
+
+    def _notify_done_cb(self, future):
+        try:
+            result = future.result()
+            if result.success:
+                self.get_logger().info(f'[{RUN_NAME}] ros_node notified — VLM markers will be published.')
+            else:
+                self.get_logger().warn(f'[{RUN_NAME}] ros_node notify response: {result.message}')
+        except Exception as e:
+            self.get_logger().error(f'[{RUN_NAME}] Notify callback error: {e}')
 
     # -----------------------------------------------------------------------
     # Main pipeline
@@ -79,15 +146,15 @@ class VlmLabelNode(Node):
     def _run(self):
         # Step 1 — Environment context from random env frames
         env_context = self._get_env_context()
-        self.get_logger().info(f'Environment context:\n{env_context}')
+        self.get_logger().info(f'[{RUN_NAME}] Environment context:\n{env_context}')
 
         # Step 2 — For each object crop, get improved VLM label
         results   = {}
         obj_files = sorted([f for f in os.listdir(self.det_objects_dir) if f.endswith('.jpg')])
 
         if not obj_files:
-            self.get_logger().warn('No object crops found. Run ros_node first.')
-            return
+            self.get_logger().warn(f'[{RUN_NAME}] No object crops found.')
+            return False
 
         self.get_logger().info(f'[{RUN_NAME}] Processing {len(obj_files)} object crops...')
 
@@ -146,6 +213,8 @@ class VlmLabelNode(Node):
         # Step 4 — Majority vote per YOLO cluster -> vlm_object_stack.json
         self._build_vlm_object_stack(results)
 
+        return True
+
     # -----------------------------------------------------------------------
     # Step 1 — Environment context
     # -----------------------------------------------------------------------
@@ -156,7 +225,7 @@ class VlmLabelNode(Node):
         ])
 
         if not env_files:
-            self.get_logger().warn('No env frames found. Env context will be empty.')
+            self.get_logger().warn(f'[{RUN_NAME}] No env frames found. Env context will be empty.')
             return 'No environment context available.'
 
         sample = random.sample(env_files, min(self.env_sample_count, len(env_files)))
@@ -266,7 +335,7 @@ class VlmLabelNode(Node):
             return response if response else None
 
         except Exception as e:
-            self.get_logger().warn(f'VLM inference error: {e}')
+            self.get_logger().warn(f'[{RUN_NAME}] VLM inference error: {e}')
             gc.collect()
             torch.cuda.empty_cache()
             return None
@@ -276,7 +345,6 @@ class VlmLabelNode(Node):
     # -----------------------------------------------------------------------
 
     def _build_vlm_object_stack(self, results):
-
         yolo_stack_path = os.path.join(self.output_dir, f'{RUN_NAME}_object_stack.json')
         if not os.path.exists(yolo_stack_path):
             self.get_logger().warn(
@@ -339,6 +407,7 @@ class VlmLabelNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = VlmLabelNode()
+    rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
 

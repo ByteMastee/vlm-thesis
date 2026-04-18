@@ -17,7 +17,7 @@ import tf2_ros
 import rclpy
 
 # --- Run name: must match ros_node.py ---
-RUN_NAME = 'run_01'
+RUN_NAME = 'run_02'
 
 
 class YoloMapNode:

@@ -1,11 +1,14 @@
 import os
 import time
+import json
+import threading
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import MarkerArray
+from std_srvs.srv import Trigger
 
 import tf2_ros
 
@@ -13,7 +16,7 @@ from semantic_mapping.yolo_map_node import YoloMapNode
 from semantic_mapping.rviz_publisher_node import RvizPublisherNode
 
 # --- Run name: change this for each new run ---
-RUN_NAME = 'run_01'
+RUN_NAME = 'run_02'
 
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 
@@ -66,15 +69,17 @@ class RosBridgeNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # --- State ---
-        self.latest_odom        = None
-        self.cam_info           = None
-        self.is_calibrated      = False
-        self.frame_count        = 0
-        self.processed_count    = 0
-        self.process_done       = False
-        self.total_start_time   = None
-        self.total_compute_time = 0.0
-        self.gt_published       = False
+        self.latest_odom          = None
+        self.cam_info             = None
+        self.is_calibrated        = False
+        self.frame_count          = 0
+        self.processed_count      = 0
+        self.process_done         = False
+        self.total_start_time     = None
+        self.total_compute_time   = 0.0
+        self.gt_published         = False
+        self.cached_marker_array  = None
+        self.cached_vlm_markers   = None
 
         # --- Functional nodes ---
         self.yolo_map_node  = None
@@ -87,13 +92,23 @@ class RosBridgeNode(Node):
         )
 
         # --- Publishers ---
-        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers', latched_qos)
-        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',    10)
+        self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
+        self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',        10)
+        self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
 
         # --- Subscribers ---
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
         self.create_subscription(Image,      image_topic,    self.image_cb,    10)
         self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)
+
+        # --- Service client: call vlm_label_node to trigger VLM pipeline ---
+        self.vlm_client = self.create_client(Trigger, 'run_vlm_pipeline')
+
+        # --- Service server: vlm_label_node calls this when pipeline is done ---
+        self.create_service(Trigger, 'vlm_pipeline_done', self._vlm_done_cb)
+
+        # --- Republish timer: keeps markers alive for RViz uncheck/recheck ---
+        self.create_timer(3.0, self._republish_markers)
 
         # --- Process timer ---
         self.create_timer(process_delay, self.process)
@@ -145,10 +160,11 @@ class RosBridgeNode(Node):
                 self.ground_truth, self.get_clock()
             )
             self.marker_pub.publish(gt_markers)
-            self.gt_published = True
-            self.get_logger().info('GT markers published.')
+            self.cached_marker_array = gt_markers
+            self.gt_published        = True
+            self.get_logger().info(f'[{RUN_NAME}] GT markers published.')
 
-        self.get_logger().info('Functional nodes initialized.')
+        self.get_logger().info(f'[{RUN_NAME}] Functional nodes initialized.')
 
     def image_cb(self, msg):
         self.frame_count += 1
@@ -247,12 +263,86 @@ class RosBridgeNode(Node):
         )
 
         self.marker_pub.publish(marker_array)
+        self.cached_marker_array = marker_array
         self.get_logger().info(
             f'[{RUN_NAME}] Final markers published to /semantic_map_markers — '
             f'{len(marker_array.markers)} markers.'
         )
 
-        self.get_logger().info(f'[{RUN_NAME}] Processing complete.')
+        self.get_logger().info(f'[{RUN_NAME}] YOLO mapping complete — calling VLM pipeline...')
+
+        # --- Call VLM pipeline in separate thread ---
+        thread = threading.Thread(target=self._call_vlm_service, daemon=True)
+        thread.start()
+
+    # --- VLM service call (runs in separate thread) ---
+
+    def _call_vlm_service(self):
+        if not self.vlm_client.wait_for_service(timeout_sec=10.0):
+            self.get_logger().warn(
+                f'[{RUN_NAME}] run_vlm_pipeline service not available — VLM pipeline skipped.'
+            )
+            return
+
+        request = Trigger.Request()
+        future  = self.vlm_client.call_async(request)
+
+        # Spin until future completes
+        rclpy.spin_until_future_complete(self, future, timeout_sec=30.0)
+
+        try:
+            result = future.result()
+            if result.success:
+                self.get_logger().info(
+                    f'[{RUN_NAME}] VLM pipeline triggered successfully: {result.message}'
+                )
+            else:
+                self.get_logger().warn(
+                    f'[{RUN_NAME}] VLM pipeline trigger failed: {result.message}'
+                )
+        except Exception as e:
+            self.get_logger().error(f'[{RUN_NAME}] VLM service call error: {e}')
+
+    # --- VLM pipeline done callback (called by vlm_label_node) ---
+
+    def _vlm_done_cb(self, request, response):
+        self.get_logger().info(f'[{RUN_NAME}] VLM pipeline complete — publishing VLM markers.')
+
+        vlm_stack_path = os.path.join(self.output_dir, f'{RUN_NAME}_vlm_object_stack.json')
+        if not os.path.exists(vlm_stack_path):
+            self.get_logger().error(
+                f'[{RUN_NAME}] {RUN_NAME}_vlm_object_stack.json not found — cannot publish VLM markers.'
+            )
+            response.success = False
+            response.message = 'vlm_object_stack.json not found.'
+            return response
+
+        with open(vlm_stack_path, 'r') as f:
+            vlm_object_stack = json.load(f)
+
+        vlm_markers = self.rviz_publisher.build_vlm_marker_array(
+            vlm_object_stack=vlm_object_stack,
+            clock=self.get_clock()
+        )
+
+        self.vlm_marker_pub.publish(vlm_markers)
+        self.cached_vlm_markers = vlm_markers
+        self.get_logger().info(
+            f'[{RUN_NAME}] VLM markers published to /vlm_semantic_map_markers — '
+            f'{len(vlm_markers.markers)} markers.'
+        )
+
+        response.success = True
+        response.message = 'VLM markers published.'
+        return response
+
+    # --- Republish timer: ensures markers survive RViz uncheck/recheck ---
+
+    def _republish_markers(self):
+        if self.cached_marker_array is not None:
+            self.marker_pub.publish(self.cached_marker_array)
+        if self.cached_vlm_markers is not None:
+            self.vlm_marker_pub.publish(self.cached_vlm_markers)
 
 
 def main(args=None):
