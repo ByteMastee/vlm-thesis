@@ -16,9 +16,6 @@ from std_srvs.srv import Trigger
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 
-# --- Run name: must match ros_node.py ---
-RUN_NAME = 'run_02'
-
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 
 
@@ -27,25 +24,33 @@ class VlmLabelNode(Node):
         super().__init__('vlm_label_node')
 
         # --- Parameters ---
-        self.declare_parameter('output_dir',       os.path.join(BASE_OUTPUT_DIR, RUN_NAME))
+        self.declare_parameter('run_name',         'run_01')
+        self.declare_parameter('output_dir',       '')
         self.declare_parameter('model_path',       '/root/UVC_ws/models/qwen2.5-vl-3b')
         self.declare_parameter('max_new_tokens',   128)
         self.declare_parameter('env_sample_count', 5)
 
-        self.output_dir       = self.get_parameter('output_dir').value
-        self.model_path       = self.get_parameter('model_path').value
+        self.run_name     = self.get_parameter('run_name').value
+        self.model_path   = self.get_parameter('model_path').value
         self.max_new_tokens   = self.get_parameter('max_new_tokens').value
         self.env_sample_count = self.get_parameter('env_sample_count').value
+
+        # --- Output dir: use parameter if provided, else build from run_name ---
+        output_dir_param = self.get_parameter('output_dir').value
+        if output_dir_param:
+            self.output_dir = output_dir_param
+        else:
+            self.output_dir = os.path.join(BASE_OUTPUT_DIR, self.run_name)
 
         # --- Folder paths ---
         self.det_objects_dir = os.path.join(self.output_dir, 'detections', 'objects')
         self.env_frames_dir  = os.path.join(self.output_dir, 'env_frames')
-        self.vlm_output_path = os.path.join(self.output_dir, f'{RUN_NAME}_vlm_labels.json')
+        self.vlm_output_path = os.path.join(self.output_dir, f'{self.run_name}_vlm_labels.json')
 
         # --- State ---
         self.pipeline_running = False
 
-        self.get_logger().info(f'vlm_label_node starting | RUN_NAME: {RUN_NAME}')
+        self.get_logger().info(f'vlm_label_node starting | RUN_NAME: {self.run_name}')
         self.get_logger().info(f'  output_dir       : {self.output_dir}')
         self.get_logger().info(f'  model_path       : {self.model_path}')
         self.get_logger().info(f'  max_new_tokens   : {self.max_new_tokens}')
@@ -60,7 +65,7 @@ class VlmLabelNode(Node):
             'run_vlm_pipeline',
             self._vlm_pipeline_service_cb
         )
-        self.get_logger().info(f'[{RUN_NAME}] VLM pipeline service ready: run_vlm_pipeline')
+        self.get_logger().info(f'[{self.run_name}] VLM pipeline service ready: run_vlm_pipeline')
 
         # --- Service client: call ros_node when VLM pipeline is complete ---
         self.notify_client = self.create_client(Trigger, 'vlm_pipeline_done')
@@ -83,7 +88,7 @@ class VlmLabelNode(Node):
             device_map='cuda:0'
         )
         self.model.eval()
-        self.get_logger().info(f'[{RUN_NAME}] Qwen2.5-VL model loaded. Waiting for service call...')
+        self.get_logger().info(f'[{self.run_name}] Qwen2.5-VL model loaded. Waiting for service call...')
 
     # -----------------------------------------------------------------------
     # Service callback — triggered by ros_node
@@ -91,15 +96,14 @@ class VlmLabelNode(Node):
 
     def _vlm_pipeline_service_cb(self, request, response):
         if self.pipeline_running:
-            self.get_logger().warn(f'[{RUN_NAME}] VLM pipeline already running — ignoring call.')
+            self.get_logger().warn(f'[{self.run_name}] VLM pipeline already running — ignoring call.')
             response.success = False
             response.message = 'Pipeline already running.'
             return response
 
         self.pipeline_running = True
-        self.get_logger().info(f'[{RUN_NAME}] VLM pipeline service called — starting in background thread.')
+        self.get_logger().info(f'[{self.run_name}] VLM pipeline service called — starting in background thread.')
 
-        # Run pipeline in separate thread so service returns immediately
         thread = threading.Thread(target=self._run_pipeline_and_notify, daemon=True)
         thread.start()
 
@@ -115,14 +119,13 @@ class VlmLabelNode(Node):
         try:
             success = self._run()
         except Exception as e:
-            self.get_logger().error(f'[{RUN_NAME}] VLM pipeline error: {e}')
+            self.get_logger().error(f'[{self.run_name}] VLM pipeline error: {e}')
             success = False
         finally:
             self.pipeline_running = False
 
-        # Notify ros_node that VLM pipeline is complete
         if not self.notify_client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().warn(f'[{RUN_NAME}] vlm_pipeline_done service not available — skipping notify.')
+            self.get_logger().warn(f'[{self.run_name}] vlm_pipeline_done service not available — skipping notify.')
             return
 
         notify_request = Trigger.Request()
@@ -133,36 +136,31 @@ class VlmLabelNode(Node):
         try:
             result = future.result()
             if result.success:
-                self.get_logger().info(f'[{RUN_NAME}] ros_node notified — VLM markers will be published.')
+                self.get_logger().info(f'[{self.run_name}] ros_node notified — VLM markers will be published.')
             else:
-                self.get_logger().warn(f'[{RUN_NAME}] ros_node notify response: {result.message}')
+                self.get_logger().warn(f'[{self.run_name}] ros_node notify response: {result.message}')
         except Exception as e:
-            self.get_logger().error(f'[{RUN_NAME}] Notify callback error: {e}')
+            self.get_logger().error(f'[{self.run_name}] Notify callback error: {e}')
 
     # -----------------------------------------------------------------------
     # Main pipeline
     # -----------------------------------------------------------------------
 
     def _run(self):
-        # Step 1 — Environment context from random env frames
         env_context = self._get_env_context()
-        self.get_logger().info(f'[{RUN_NAME}] Environment context:\n{env_context}')
+        self.get_logger().info(f'[{self.run_name}] Environment context:\n{env_context}')
 
-        # Step 2 — For each object crop, get improved VLM label
         results   = {}
         obj_files = sorted([f for f in os.listdir(self.det_objects_dir) if f.endswith('.jpg')])
 
         if not obj_files:
-            self.get_logger().warn(f'[{RUN_NAME}] No object crops found.')
+            self.get_logger().warn(f'[{self.run_name}] No object crops found.')
             return False
 
-        self.get_logger().info(f'[{RUN_NAME}] Processing {len(obj_files)} object crops...')
+        self.get_logger().info(f'[{self.run_name}] Processing {len(obj_files)} object crops...')
 
         for obj_file in obj_files:
-            obj_path = os.path.join(self.det_objects_dir, obj_file)
-
-            # Parse frame_id and yolo_label from filename: f00042_chair.jpg
-            # Also handles legacy format with confidence: f00042_chair_0.56.jpg
+            obj_path    = os.path.join(self.det_objects_dir, obj_file)
             name_no_ext = os.path.splitext(obj_file)[0]
             frame_id    = name_no_ext.split('_', 1)[0]
             remainder   = name_no_ext.split('_', 1)[1] if '_' in name_no_ext else 'unknown'
@@ -180,39 +178,35 @@ class VlmLabelNode(Node):
                 yolo_label=yolo_label,
                 env_context=env_context
             )
-            elapsed = time.time() - t_start
-
+            elapsed   = time.time() - t_start
             vlm_label = self._clean_label(vlm_label)
 
             if vlm_label == 'none':
                 self.get_logger().info(
-                    f'[{RUN_NAME}] [{obj_file}] YOLO: "{yolo_label}" -> VLM: REJECTED ({elapsed:.2f}s)'
+                    f'[{self.run_name}] [{obj_file}] YOLO: "{yolo_label}" -> VLM: REJECTED ({elapsed:.2f}s)'
                 )
             else:
                 self.get_logger().info(
-                    f'[{RUN_NAME}] [{obj_file}] YOLO: "{yolo_label}" -> VLM: "{vlm_label}" ({elapsed:.2f}s)'
+                    f'[{self.run_name}] [{obj_file}] YOLO: "{yolo_label}" -> VLM: "{vlm_label}" ({elapsed:.2f}s)'
                 )
 
             results[obj_file] = {
-                'yolo_label'     : yolo_label,
-                'vlm_label'      : vlm_label,
-                'frame_id'       : frame_id,
-                'inference_time' : round(elapsed, 3)
+                'yolo_label'    : yolo_label,
+                'vlm_label'     : vlm_label,
+                'frame_id'      : frame_id,
+                'inference_time': round(elapsed, 3)
             }
 
             gc.collect()
             torch.cuda.empty_cache()
 
-        # Step 3 — Save per-crop results
         with open(self.vlm_output_path, 'w') as f:
             json.dump(results, f, indent=2)
 
-        self.get_logger().info(f'[{RUN_NAME}] VLM labels saved: {self.vlm_output_path}')
-        self.get_logger().info(f'[{RUN_NAME}] Total objects processed: {len(results)}')
+        self.get_logger().info(f'[{self.run_name}] VLM labels saved: {self.vlm_output_path}')
+        self.get_logger().info(f'[{self.run_name}] Total objects processed: {len(results)}')
 
-        # Step 4 — Majority vote per YOLO cluster -> vlm_object_stack.json
         self._build_vlm_object_stack(results)
-
         return True
 
     # -----------------------------------------------------------------------
@@ -225,11 +219,11 @@ class VlmLabelNode(Node):
         ])
 
         if not env_files:
-            self.get_logger().warn(f'[{RUN_NAME}] No env frames found. Env context will be empty.')
+            self.get_logger().warn(f'[{self.run_name}] No env frames found. Env context will be empty.')
             return 'No environment context available.'
 
         sample = random.sample(env_files, min(self.env_sample_count, len(env_files)))
-        self.get_logger().info(f'[{RUN_NAME}] Env frames sampled: {sample}')
+        self.get_logger().info(f'[{self.run_name}] Env frames sampled: {sample}')
 
         env_prompt = (
             'You are a robot perception system analyzing an indoor environment. '
@@ -248,7 +242,7 @@ class VlmLabelNode(Node):
             desc = self._query_vlm(content, max_new_tokens=96)
             if desc:
                 descriptions.append(desc)
-                self.get_logger().info(f'[{RUN_NAME}] Env [{fname}]: {desc}')
+                self.get_logger().info(f'[{self.run_name}] Env [{fname}]: {desc}')
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -262,7 +256,6 @@ class VlmLabelNode(Node):
     # -----------------------------------------------------------------------
 
     def _clean_label(self, label):
-        """Remove duplicate words and run-together repeated substrings."""
         if not label:
             return label
         label = label.lower().strip()
@@ -335,7 +328,7 @@ class VlmLabelNode(Node):
             return response if response else None
 
         except Exception as e:
-            self.get_logger().warn(f'[{RUN_NAME}] VLM inference error: {e}')
+            self.get_logger().warn(f'[{self.run_name}] VLM inference error: {e}')
             gc.collect()
             torch.cuda.empty_cache()
             return None
@@ -345,16 +338,16 @@ class VlmLabelNode(Node):
     # -----------------------------------------------------------------------
 
     def _build_vlm_object_stack(self, results):
-        yolo_stack_path = os.path.join(self.output_dir, f'{RUN_NAME}_object_stack.json')
+        yolo_stack_path = os.path.join(self.output_dir, f'{self.run_name}_object_stack.json')
         if not os.path.exists(yolo_stack_path):
             self.get_logger().warn(
-                f'[{RUN_NAME}] {RUN_NAME}_object_stack.json not found. Skipping vlm_object_stack.'
+                f'[{self.run_name}] {self.run_name}_object_stack.json not found. Skipping vlm_object_stack.'
             )
             return
 
         with open(yolo_stack_path, 'r') as f:
             yolo_stack = json.load(f)
-        self.get_logger().info(f'[{RUN_NAME}] Loaded YOLO object stack: {yolo_stack_path}')
+        self.get_logger().info(f'[{self.run_name}] Loaded YOLO object stack: {yolo_stack_path}')
 
         vlm_votes = {}
         for entry in results.values():
@@ -375,10 +368,18 @@ class VlmLabelNode(Node):
                 base_label = cluster_key
 
             if base_label in vlm_votes and vlm_votes[base_label]:
-                majority_label = Counter(vlm_votes[base_label]).most_common(1)[0][0]
+                vote_counts    = Counter(vlm_votes[base_label]).most_common()
+                majority_label = vote_counts[0][0]
+                # If tie exists, fall back to YOLO base label
+                if len(vote_counts) > 1 and vote_counts[0][1] == vote_counts[1][1]:
+                    majority_label = base_label
+                    self.get_logger().info(
+                        f'[{self.run_name}] Cluster "{cluster_key}" -> tie detected, '
+                        f'falling back to YOLO label: "{base_label}"'
+                    )
             else:
                 self.get_logger().info(
-                    f'[{RUN_NAME}] Cluster "{cluster_key}" -> all crops rejected by VLM, skipping.'
+                    f'[{self.run_name}] Cluster "{cluster_key}" -> all crops rejected by VLM, skipping.'
                 )
                 continue
 
@@ -394,14 +395,14 @@ class VlmLabelNode(Node):
             }
 
             self.get_logger().info(
-                f'[{RUN_NAME}] Cluster "{cluster_key}" -> VLM majority: "{majority_label}" '
+                f'[{self.run_name}] Cluster "{cluster_key}" -> VLM majority: "{majority_label}" '
                 f'(votes: {len(vlm_votes.get(base_label, []))})'
             )
 
-        vlm_stack_path = os.path.join(self.output_dir, f'{RUN_NAME}_vlm_object_stack.json')
+        vlm_stack_path = os.path.join(self.output_dir, f'{self.run_name}_vlm_object_stack.json')
         with open(vlm_stack_path, 'w') as f:
             json.dump(vlm_object_stack, f, indent=2)
-        self.get_logger().info(f'[{RUN_NAME}] VLM object stack saved: {vlm_stack_path}')
+        self.get_logger().info(f'[{self.run_name}] VLM object stack saved: {vlm_stack_path}')
 
 
 def main(args=None):

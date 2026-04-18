@@ -16,9 +16,6 @@ from ultralytics import YOLO
 import tf2_ros
 import rclpy
 
-# --- Run name: must match ros_node.py ---
-RUN_NAME = 'run_02'
-
 
 class YoloMapNode:
     def __init__(
@@ -33,6 +30,7 @@ class YoloMapNode:
         ground_truth,
         logger,
         tf_buffer,
+        run_name,
         env_frame_interval=20
     ):
         self.confidence         = confidence
@@ -47,6 +45,7 @@ class YoloMapNode:
         self.ground_truth       = ground_truth
         self.logger             = logger
         self.tf_buffer          = tf_buffer
+        self.run_name           = run_name
         self.env_frame_interval = env_frame_interval
 
         self.ray_stack         = {}
@@ -177,35 +176,26 @@ class YoloMapNode:
         return all_candidates
 
     def save_outputs(self):
-        json_path = os.path.join(self.output_dir, f'{RUN_NAME}_object_stack.json')
+        json_path = os.path.join(self.output_dir, f'{self.run_name}_object_stack.json')
         with open(json_path, 'w') as f:
             json.dump(self.object_stack, f, indent=2)
-        self.logger.info(f'[{RUN_NAME}] Object stack saved: {json_path}')
+        self.logger.info(f'[{self.run_name}] Object stack saved: {json_path}')
 
         robot_path_data = {'x': self.robot_x, 'y': self.robot_y}
-        robot_path_json = os.path.join(self.output_dir, f'{RUN_NAME}_robot_path.json')
+        robot_path_json = os.path.join(self.output_dir, f'{self.run_name}_robot_path.json')
         with open(robot_path_json, 'w') as f:
             json.dump(robot_path_data, f)
-        self.logger.info(f'[{RUN_NAME}] Robot path saved: {robot_path_json}')
+        self.logger.info(f'[{self.run_name}] Robot path saved: {robot_path_json}')
 
         plot_path = self._save_map_plot()
-        self.logger.info(f'[{RUN_NAME}] Map plot saved: {plot_path}')
+        self.logger.info(f'[{self.run_name}] Map plot saved: {plot_path}')
 
-        self.logger.info(f'[{RUN_NAME}] Total triangulated: {self.total_triangulated}')
-        self.logger.info(f'[{RUN_NAME}] Total skipped: {self.total_skipped}')
+        self.logger.info(f'[{self.run_name}] Total triangulated: {self.total_triangulated}')
+        self.logger.info(f'[{self.run_name}] Total skipped: {self.total_skipped}')
 
     # --- Private helpers ---
 
     def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw):
-        """
-        Uses tf2_ros Buffer to look up the transform from
-        camera_fisheye_front_optical_frame -> odom,
-        projects the pixel ray into the odom XY plane (z=0, 2D).
-
-        Returns:
-            ray_2d    — normalized 2D direction in odom frame (np.array [x, y])
-            origin_2d — 2D camera origin in odom frame (np.array [x, y])
-        """
         x_cam       = (px_cx - self.cx) / self.fx
         y_cam       = (px_cy - self.cy) / self.fy
         z_cam       = 1.0
@@ -234,13 +224,11 @@ class YoloMapNode:
         ])
 
         ray_odom_3d = R @ ray_optical
-
-        ray_2d = ray_odom_3d[:2]
-        norm   = np.linalg.norm(ray_2d)
+        ray_2d      = ray_odom_3d[:2]
+        norm        = np.linalg.norm(ray_2d)
         if norm < 1e-6:
             return None, None
-        ray_2d = ray_2d / norm
-
+        ray_2d    = ray_2d / norm
         origin_2d = t[:2]
 
         return ray_2d, origin_2d
@@ -250,10 +238,6 @@ class YoloMapNode:
         return np.degrees(np.arccos(cos_angle))
 
     def _intersect_rays_2d(self, o1, d1, o2, d2):
-        """
-        2D ray intersection: find closest point between two 2D rays.
-        Returns midpoint if both t1 >= 0 and t2 >= 0 (forward direction only).
-        """
         A     = np.array([[d1[0], -d2[0]],
                           [d1[1], -d2[1]]])
         b     = o2 - o1
@@ -389,7 +373,7 @@ class YoloMapNode:
 
         plt.xlabel('X (m)')
         plt.ylabel('Y (m)')
-        plt.title(f'Semantic Map — {RUN_NAME} — Detected vs Ground Truth')
+        plt.title(f'Semantic Map — {self.run_name} — Detected vs Ground Truth')
         plt.legend(handles=[
             plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
                        markersize=10, label='Ground Truth'),
@@ -404,7 +388,7 @@ class YoloMapNode:
         plt.grid(True)
         plt.axis('equal')
 
-        plot_path = os.path.join(self.output_dir, f'{RUN_NAME}_map.png')
+        plot_path = os.path.join(self.output_dir, f'{self.run_name}_map.png')
         plt.savefig(plot_path, dpi=150)
         plt.close()
         return plot_path
