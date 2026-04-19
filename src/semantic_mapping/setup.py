@@ -11,6 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/semantic_mapping.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/vit_vlm_mapping.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -32,6 +33,9 @@ setup(
             'qwen_vlm_test_node = semantic_mapping.qwen_vlm_test_node:main',
             'vlm_label_node = semantic_mapping.vlm_label_node:main',
             'vlm_rviz_node = semantic_mapping.vlm_rviz_node:main',
+            'ros_node_vit = semantic_mapping.ros_node_vit:main',
+            'vlm_label_node_vit = semantic_mapping.vlm_label_node_vit:main',
+            'sam2_map_node = semantic_mapping.sam2_map_node:main',
         ],
     },
 )
