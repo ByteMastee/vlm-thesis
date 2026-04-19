@@ -7,6 +7,9 @@ import gc
 import threading
 from collections import Counter
 
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='scipy')
+
 import cv2
 import torch
 import rclpy

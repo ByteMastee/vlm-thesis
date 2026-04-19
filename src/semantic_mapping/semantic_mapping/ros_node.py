@@ -2,6 +2,9 @@ import os
 import time
 import json
 import threading
+
+import numpy as np
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
@@ -39,6 +42,9 @@ class RosBridgeNode(Node):
         self.declare_parameter('env_frame_interval', 20)
         self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
+        # --- NEW: center crop ratio (0.0 = no crop, 0.2 = drop 20% from each side) ---
+        self.declare_parameter('crop_margin_ratio',  0.15)
+
         self.run_name = self.get_parameter('run_name').value
 
         image_topic    = self.get_parameter('image_topic').value
@@ -54,6 +60,21 @@ class RosBridgeNode(Node):
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
         self.env_frame_interval = self.get_parameter('env_frame_interval').value
+
+        # --- NEW: read and validate crop ratio ---
+        self.crop_margin_ratio = float(self.get_parameter('crop_margin_ratio').value)
+        if self.crop_margin_ratio < 0.0 or self.crop_margin_ratio >= 0.5:
+            self.get_logger().warn(
+                f'crop_margin_ratio={self.crop_margin_ratio} invalid (must be in [0.0, 0.5)); '
+                f'disabling crop.'
+            )
+            self.crop_margin_ratio = 0.0
+
+        # Crop window — computed once on first CameraInfo
+        self.crop_x0 = 0
+        self.crop_y0 = 0
+        self.crop_w  = 0
+        self.crop_h  = 0
 
         # --- Output dir: use parameter if provided, else build from run_name ---
         output_dir_param = self.get_parameter('output_dir').value
@@ -122,6 +143,7 @@ class RosBridgeNode(Node):
 
         self.get_logger().info(f'ros_node started | RUN_NAME: {self.run_name}')
         self.get_logger().info(f'output_dir: {self.output_dir}')
+        self.get_logger().info(f'crop_margin_ratio: {self.crop_margin_ratio}')
         self.get_logger().info(f'process will trigger in {process_delay}s')
         self.get_logger().info('Start bag playback now.')
 
@@ -139,14 +161,49 @@ class RosBridgeNode(Node):
         cx = msg.k[2]
         cy = msg.k[5]
 
+        # --- NEW: compute center-crop window and adjust principal point ---
+        W = int(msg.width)
+        H = int(msg.height)
+
+        if self.crop_margin_ratio > 0.0:
+            x0 = int(round(W * self.crop_margin_ratio))
+            y0 = int(round(H * self.crop_margin_ratio))
+            cw = W - 2 * x0
+            ch = H - 2 * y0
+
+            self.crop_x0 = x0
+            self.crop_y0 = y0
+            self.crop_w  = cw
+            self.crop_h  = ch
+
+            # Shift principal point — fx, fy are unchanged (no resize, only crop)
+            cx_adj = cx - x0
+            cy_adj = cy - y0
+
+            self.get_logger().info(
+                f'Center crop ENABLED | ratio={self.crop_margin_ratio} | '
+                f'original={W}x{H} -> cropped={cw}x{ch} | '
+                f'crop_origin=({x0},{y0}) | '
+                f'cx: {cx:.2f} -> {cx_adj:.2f} | cy: {cy:.2f} -> {cy_adj:.2f}'
+            )
+        else:
+            self.crop_x0 = 0
+            self.crop_y0 = 0
+            self.crop_w  = W
+            self.crop_h  = H
+            cx_adj = cx
+            cy_adj = cy
+            self.get_logger().info('Center crop DISABLED | using full frame.')
+
         self.get_logger().info(
-            f'Camera calibrated — fx:{fx:.4f} fy:{fy:.4f} cx:{cx:.4f} cy:{cy:.4f}'
+            f'Camera calibrated (effective) — fx:{fx:.4f} fy:{fy:.4f} '
+            f'cx:{cx_adj:.4f} cy:{cy_adj:.4f}'
         )
 
         self.yolo_map_node = YoloMapNode(
             model_path=self.model_path,
             confidence=self.confidence,
-            fx=fx, fy=fy, cx=cx, cy=cy,
+            fx=fx, fy=fy, cx=cx_adj, cy=cy_adj,
             min_angle_deg=self.min_angle_deg,
             dbscan_eps=self.dbscan_eps,
             dbscan_min_samples=self.dbscan_min_samples,
@@ -174,6 +231,55 @@ class RosBridgeNode(Node):
 
         self.get_logger().info(f'[{self.run_name}] Functional nodes initialized.')
 
+    # --- NEW: crop an incoming sensor_msgs/Image to the configured window ---
+    def _crop_image_msg(self, msg):
+        """
+        Return a new Image message cropped to (crop_x0, crop_y0, crop_w, crop_h).
+        fx, fy, cx, cy given to YoloMapNode have already been adjusted for this crop,
+        so the triangulation math stays consistent.
+        """
+        if self.crop_margin_ratio <= 0.0:
+            return msg
+
+        enc = msg.encoding
+        if enc in ('rgb8', 'bgr8'):
+            channels = 3
+        elif enc == 'mono8':
+            channels = 1
+        else:
+            # Unsupported — pass through; yolo_map_node._decode_image will warn
+            return msg
+
+        W = int(msg.width)
+        H = int(msg.height)
+
+        # Defensive: if bag resolution changed vs first CameraInfo, skip crop
+        if W != (self.crop_w + 2 * self.crop_x0) or H != (self.crop_h + 2 * self.crop_y0):
+            return msg
+
+        arr = np.frombuffer(bytes(msg.data), dtype=np.uint8)
+        if channels == 1:
+            arr = arr.reshape((H, W))
+            crop = arr[self.crop_y0:self.crop_y0 + self.crop_h,
+                       self.crop_x0:self.crop_x0 + self.crop_w]
+        else:
+            arr = arr.reshape((H, W, channels))
+            crop = arr[self.crop_y0:self.crop_y0 + self.crop_h,
+                       self.crop_x0:self.crop_x0 + self.crop_w, :]
+
+        # Contiguous buffer for tobytes()
+        crop = np.ascontiguousarray(crop)
+
+        new_msg          = Image()
+        new_msg.header   = msg.header
+        new_msg.height   = self.crop_h
+        new_msg.width    = self.crop_w
+        new_msg.encoding = enc
+        new_msg.is_bigendian = msg.is_bigendian
+        new_msg.step     = self.crop_w * channels
+        new_msg.data     = crop.tobytes()
+        return new_msg
+
     def image_cb(self, msg):
         self.frame_count += 1
 
@@ -192,8 +298,11 @@ class RosBridgeNode(Node):
         self.last_frame_time = time.time()
         frame_start = time.time()
 
+        # --- NEW: apply center crop before handing off to yolo_map_node ---
+        msg_for_yolo = self._crop_image_msg(msg)
+
         rx, ry, frame_rays, frame_candidates = self.yolo_map_node.process_frame(
-            msg, self.latest_odom
+            msg_for_yolo, self.latest_odom
         )
 
         frame_elapsed = time.time() - frame_start

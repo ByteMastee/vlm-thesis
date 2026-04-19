@@ -3,7 +3,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'run_06'
+RUN_NAME = 'run_07'
 
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
@@ -48,6 +48,7 @@ def generate_launch_description():
                 {'ray_length'        : 8.0},
                 {'process_delay'     : 2.0},
                 {'env_frame_interval': 8},
+                {'crop_margin_ratio' : 0.15},   # 0.0 = disabled, 0.15 = drop 15% from each side
                 {'ground_truth'      : [
                     'chair_1:-3.0:2.0',
                     'chair_2:-3.5:-2.5',
