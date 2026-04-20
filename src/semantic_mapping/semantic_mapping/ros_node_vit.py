@@ -322,11 +322,31 @@ class RosBridgeNodeVit(Node):
         with open(vlm_stack_path, 'r') as f:
             vlm_object_stack = json.load(f)
 
+        # Replace raw SAM2 markers with VLM-filtered positions
+        robot_path_json = os.path.join(self.output_dir, f'{self.run_name}_vit_robot_path.json')
+        if os.path.exists(robot_path_json):
+            with open(robot_path_json, 'r') as f:
+                robot_path_data = json.load(f)
+        else:
+            robot_path_data = None
+
+        filtered_marker_array = self.rviz_publisher.build_marker_array(
+            object_stack=vlm_object_stack,
+            ground_truth=self.ground_truth,
+            robot_path=robot_path_data,
+            clock=self.get_clock()
+        )
+        self.marker_pub.publish(filtered_marker_array)
+        self.cached_marker_array = filtered_marker_array
+        self.get_logger().info(
+            f'[{self.run_name}] Filtered SAM2 map markers replaced with VLM-confirmed positions.'
+        )
+
+        # Publish VLM markers
         vlm_markers = self.rviz_publisher.build_vlm_marker_array(
             vlm_object_stack=vlm_object_stack,
             clock=self.get_clock()
         )
-
         self.vlm_marker_pub.publish(vlm_markers)
         self.cached_vlm_markers = vlm_markers
         self.get_logger().info(

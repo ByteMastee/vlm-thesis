@@ -34,33 +34,34 @@ class SAM2MapNode:
         tf_buffer,
         run_name,
         env_frame_interval=20,
-        points_per_side=16,
-        pred_iou_thresh=0.82,
-        stability_score_thresh=0.85,
-        min_mask_region_area=1500,
-        max_mask_area_fraction=0.20,
-        max_regions=12
+        points_per_side=8,
+        pred_iou_thresh=0.90,
+        stability_score_thresh=0.92,
+        min_mask_region_area=3000,
+        max_mask_area_fraction=0.10,
+        max_regions=6
     ):
-        self.fx                   = fx
-        self.fy                   = fy
-        self.cx                   = cx
-        self.cy                   = cy
-        self.min_angle_deg        = min_angle_deg
-        self.dbscan_eps           = dbscan_eps
-        self.dbscan_min_samples   = dbscan_min_samples
-        self.output_dir           = output_dir
-        self.ground_truth         = ground_truth
-        self.logger               = logger
-        self.tf_buffer            = tf_buffer
-        self.run_name             = run_name
-        self.env_frame_interval   = env_frame_interval
+        self.fx                     = fx
+        self.fy                     = fy
+        self.cx                     = cx
+        self.cy                     = cy
+        self.min_angle_deg          = min_angle_deg
+        self.dbscan_eps             = dbscan_eps
+        self.dbscan_min_samples     = dbscan_min_samples
+        self.output_dir             = output_dir
+        self.ground_truth           = ground_truth
+        self.logger                 = logger
+        self.tf_buffer              = tf_buffer
+        self.run_name               = run_name
+        self.env_frame_interval     = env_frame_interval
         self.max_mask_area_fraction = max_mask_area_fraction
-        self.max_regions          = max_regions
-        self.min_mask_region_area = min_mask_region_area
+        self.max_regions            = max_regions
+        self.min_mask_region_area   = min_mask_region_area
 
         self.ray_stack         = {}
         self.candidate_stack   = {}
         self.object_stack      = {}
+        self.crop_ray_data     = {}
 
         self.robot_x = []
         self.robot_y = []
@@ -69,13 +70,21 @@ class SAM2MapNode:
         self.total_skipped         = 0
         self.processed_frame_count = 0
 
-        # --- Output folders ---
+        # Cross-frame region tracking
+        # tracked_regions: list of dicts:
+        #   { 'label': str, 'bbox': (x1,y1,x2,y2), 'last_seen': int }
+        self.tracked_regions   = []
+        self.next_track_id     = 0
+        self.track_iou_thresh  = 0.25   # min IoU to match region to existing track
+        self.track_max_unseen  = 5      # frames before a track is considered lost
+
+        # Output folders
         self.det_objects_dir = os.path.join(output_dir, 'detections', 'sam2_objects')
         self.env_frames_dir  = os.path.join(output_dir, 'env_frames')
         os.makedirs(self.det_objects_dir, exist_ok=True)
         os.makedirs(self.env_frames_dir,  exist_ok=True)
 
-        # --- Load SAM2 ---
+        # Load SAM2
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.logger.info(f'[{run_name}] Loading SAM2 model on {device}...')
         sam2_model = build_sam2(model_cfg, checkpoint_path, device=device)
@@ -84,9 +93,70 @@ class SAM2MapNode:
             points_per_side=points_per_side,
             pred_iou_thresh=pred_iou_thresh,
             stability_score_thresh=stability_score_thresh,
-            min_mask_region_area=min_mask_region_area
+            min_mask_region_area=min_mask_region_area,
+            crop_n_layers=0
         )
         self.logger.info(f'[{run_name}] SAM2 model loaded.')
+
+    # ------------------------------------------------------------------ #
+    #  Cross-frame region tracker                                          #
+    # ------------------------------------------------------------------ #
+
+    def _bbox_iou(self, a, b):
+        ax1, ay1, ax2, ay2 = a
+        bx1, by1, bx2, by2 = b
+        ix1 = max(ax1, bx1)
+        iy1 = max(ay1, by1)
+        ix2 = min(ax2, bx2)
+        iy2 = min(ay2, by2)
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+        inter  = (ix2 - ix1) * (iy2 - iy1)
+        area_a = (ax2 - ax1) * (ay2 - ay1)
+        area_b = (bx2 - bx1) * (by2 - by1)
+        return inter / (area_a + area_b - inter + 1e-6)
+
+    def _match_or_create_track(self, bbox):
+        """
+        Match bbox to an existing tracked region by IoU.
+        Returns the track label string.
+        Creates a new track if no match found.
+        """
+        best_iou   = 0.0
+        best_idx   = -1
+
+        for i, track in enumerate(self.tracked_regions):
+            iou = self._bbox_iou(bbox, track['bbox'])
+            if iou > best_iou:
+                best_iou = iou
+                best_idx = i
+
+        if best_iou >= self.track_iou_thresh:
+            # Update existing track
+            self.tracked_regions[best_idx]['bbox']      = bbox
+            self.tracked_regions[best_idx]['last_seen'] = self.processed_frame_count
+            return self.tracked_regions[best_idx]['label']
+        else:
+            # New track
+            label = f'obj_{self.next_track_id:03d}'
+            self.next_track_id += 1
+            self.tracked_regions.append({
+                'label':     label,
+                'bbox':      bbox,
+                'last_seen': self.processed_frame_count
+            })
+            return label
+
+    def _prune_lost_tracks(self):
+        """Remove tracks not seen for more than track_max_unseen frames."""
+        self.tracked_regions = [
+            t for t in self.tracked_regions
+            if (self.processed_frame_count - t['last_seen']) <= self.track_max_unseen
+        ]
+
+    # ------------------------------------------------------------------ #
+    #  Main frame processing                                               #
+    # ------------------------------------------------------------------ #
 
     def process_frame(self, image_msg, odom_msg):
         img = self._decode_image(image_msg)
@@ -99,7 +169,7 @@ class SAM2MapNode:
 
         self.processed_frame_count += 1
 
-        # --- Save env frame at regular interval ---
+        # Save env frame at regular interval
         if self.processed_frame_count % self.env_frame_interval == 0:
             env_path = os.path.join(
                 self.env_frames_dir,
@@ -107,22 +177,31 @@ class SAM2MapNode:
             )
             cv2.imwrite(env_path, img)
 
-        # --- SAM2 region proposals ---
-        img_rgb  = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # SAM2 region proposals
+        img_rgb        = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         orig_h, orig_w = img.shape[:2]
-        total_px = orig_h * orig_w
+        total_px       = orig_h * orig_w
 
         masks   = self.mask_generator.generate(img_rgb)
         regions = []
         for m in masks:
             x, y, w, h = m['bbox']
-            area_px = int(w * h)
+            area_px     = int(w * h)
+
+            # Area filters
             if area_px / total_px > self.max_mask_area_fraction:
                 continue
             if area_px < self.min_mask_region_area:
                 continue
+
+            # Aspect ratio filter — reject flat wall/floor shaped masks
+            aspect = max(w, h) / (min(w, h) + 1e-6)
+            if aspect > 4.0:
+                continue
+
+            x1, y1, x2, y2 = int(x), int(y), int(x + w), int(y + h)
             regions.append({
-                'bbox':  (int(x), int(y), int(x + w), int(y + h)),
+                'bbox':  (x1, y1, x2, y2),
                 'score': float(m['predicted_iou']),
                 'mask':  m['segmentation']
             })
@@ -131,54 +210,67 @@ class SAM2MapNode:
         regions = self._nms(regions, iou_thresh=0.4)
         regions = regions[:self.max_regions]
 
+        self.logger.info(
+            f'[{self.run_name}] Frame {self.processed_frame_count}: '
+            f'{len(masks)} raw masks -> {len(regions)} after filtering'
+        )
+
+        # Prune lost tracks
+        self._prune_lost_tracks()
+
         frame_rays       = []
         frame_candidates = []
 
-        for idx, region in enumerate(regions):
+        for region in regions:
             x1, y1, x2, y2 = region['bbox']
             px_cx = (x1 + x2) // 2
             px_cy = (y1 + y2) // 2
 
+            # Cross-frame tracking — get consistent label for this bbox
+            track_label = self._match_or_create_track(region['bbox'])
+
             # Save crop
-            crop_y1  = max(0, y1)
-            crop_y2  = min(img.shape[0], y2)
-            crop_x1  = max(0, x1)
-            crop_x2  = min(img.shape[1], x2)
-            obj_crop = img[crop_y1:crop_y2, crop_x1:crop_x2]
+            crop_y1       = max(0, y1)
+            crop_y2       = min(img.shape[0], y2)
+            crop_x1       = max(0, x1)
+            crop_x2       = min(img.shape[1], x2)
+            obj_crop      = img[crop_y1:crop_y2, crop_x1:crop_x2]
+            crop_filename = f'f{self.processed_frame_count:05d}_{track_label}.jpg'
             if obj_crop.size > 0:
-                obj_path = os.path.join(
-                    self.det_objects_dir,
-                    f'f{self.processed_frame_count:05d}_region{idx:02d}.jpg'
-                )
-                cv2.imwrite(obj_path, obj_crop)
+                cv2.imwrite(os.path.join(self.det_objects_dir, crop_filename), obj_crop)
 
             # Ray casting
             ray_2d, origin_2d = self._pixel_to_ray_2d(px_cx, px_cy, rx, ry, yaw)
             if ray_2d is None:
                 continue
 
+            # Save ray data per crop for VLM-filtered rebuild
+            self.crop_ray_data[crop_filename] = {
+                'origin':    origin_2d.tolist(),
+                'ray':       ray_2d.tolist(),
+                'region_id': track_label,
+                'frame':     self.processed_frame_count
+            }
+
             frame_rays.append((origin_2d, ray_2d))
 
-            label = f'region{idx:02d}'
-            if label not in self.ray_stack:
-                self.ray_stack[label]       = []
-                self.candidate_stack[label] = []
+            if track_label not in self.ray_stack:
+                self.ray_stack[track_label]       = []
+                self.candidate_stack[track_label] = []
 
-            for prev_origin, prev_ray in self.ray_stack[label]:
+            for prev_origin, prev_ray in self.ray_stack[track_label]:
                 angle = self._angle_between_rays_2d(ray_2d, prev_ray)
                 if angle < self.min_angle_deg:
                     self.total_skipped += 1
                     continue
-
                 pt = self._intersect_rays_2d(prev_origin, prev_ray, origin_2d, ray_2d)
                 if pt is None:
                     continue
-
-                self.candidate_stack[label].append((pt[0], pt[1]))
+                self.candidate_stack[track_label].append((pt[0], pt[1]))
                 frame_candidates.append((pt[0], pt[1]))
                 self.total_triangulated += 1
 
-            self.ray_stack[label].append((origin_2d, ray_2d))
+            self.ray_stack[track_label].append((origin_2d, ray_2d))
 
         return rx, ry, frame_rays, frame_candidates
 
@@ -201,6 +293,11 @@ class SAM2MapNode:
             json.dump(self.object_stack, f, indent=2)
         self.logger.info(f'[{self.run_name}] VIT object stack saved: {json_path}')
 
+        ray_data_path = os.path.join(self.output_dir, f'{self.run_name}_crop_ray_data.json')
+        with open(ray_data_path, 'w') as f:
+            json.dump(self.crop_ray_data, f, indent=2)
+        self.logger.info(f'[{self.run_name}] Crop ray data saved: {ray_data_path}')
+
         robot_path_data = {'x': self.robot_x, 'y': self.robot_y}
         robot_path_json = os.path.join(self.output_dir, f'{self.run_name}_vit_robot_path.json')
         with open(robot_path_json, 'w') as f:
@@ -213,7 +310,9 @@ class SAM2MapNode:
         self.logger.info(f'[{self.run_name}] Total triangulated: {self.total_triangulated}')
         self.logger.info(f'[{self.run_name}] Total skipped: {self.total_skipped}')
 
-    # --- NMS ---
+    # ------------------------------------------------------------------ #
+    #  NMS                                                                 #
+    # ------------------------------------------------------------------ #
 
     def _nms(self, regions, iou_thresh=0.4):
         keep       = []
@@ -229,21 +328,9 @@ class SAM2MapNode:
                     suppressed.add(j)
         return keep
 
-    def _bbox_iou(self, a, b):
-        ax1, ay1, ax2, ay2 = a
-        bx1, by1, bx2, by2 = b
-        ix1 = max(ax1, bx1)
-        iy1 = max(ay1, by1)
-        ix2 = min(ax2, bx2)
-        iy2 = min(ay2, by2)
-        if ix2 <= ix1 or iy2 <= iy1:
-            return 0.0
-        inter  = (ix2 - ix1) * (iy2 - iy1)
-        area_a = (ax2 - ax1) * (ay2 - ay1)
-        area_b = (bx2 - bx1) * (by2 - by1)
-        return inter / (area_a + area_b - inter + 1e-6)
-
-    # --- Private helpers (identical to YoloMapNode) ---
+    # ------------------------------------------------------------------ #
+    #  Private helpers                                                     #
+    # ------------------------------------------------------------------ #
 
     def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw):
         x_cam       = (px_cx - self.cx) / self.fx
@@ -361,10 +448,11 @@ class SAM2MapNode:
             return object_entries
 
         for cluster_id in sorted(unique_clusters):
-            cluster_pts = pts[labels_db == cluster_id]
-            final_x     = float(np.median(cluster_pts[:, 0]))
-            final_y     = float(np.median(cluster_pts[:, 1]))
-            instance_label = label if len(unique_clusters) == 1 else f'{label}_{cluster_id + 1}'
+            cluster_pts    = pts[labels_db == cluster_id]
+            final_x        = float(np.median(cluster_pts[:, 0]))
+            final_y        = float(np.median(cluster_pts[:, 1]))
+            instance_label = label if len(unique_clusters) == 1 \
+                             else f'{label}_{cluster_id + 1}'
             object_entries[instance_label] = {
                 'x': round(final_x, 4),
                 'y': round(final_y, 4),

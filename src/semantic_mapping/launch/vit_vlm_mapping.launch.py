@@ -7,7 +7,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     run_name_arg = DeclareLaunchArgument(
-        'run_name', default_value='run_vit_03',
+        'run_name', default_value='run_vit_07',
         description='Run identifier for output files'
     )
     process_delay_arg = DeclareLaunchArgument(
@@ -35,20 +35,20 @@ def generate_launch_description():
             'image_topic':              '/fisheye_front/fisheye_front/image_raw',
             'cam_info_topic':           '/fisheye_front/fisheye_front/camera_info',
             'odom_topic':               '/odom',
-            'frame_skip':               12,
-            'min_angle_deg':            8.0,
-            'dbscan_eps':               1.0,
-            'dbscan_min_samples':       3,
+            'frame_skip':               25,
+            'min_angle_deg':            5.0,
+            'dbscan_eps':               1.5,
+            'dbscan_min_samples':       2,
             'ray_length':               8.0,
             'env_frame_interval':       20,
             'sam2_checkpoint':          '/root/sam2_checkpoints/sam2.1_hiera_small.pt',
             'sam2_model_cfg':           'configs/sam2.1/sam2.1_hiera_s.yaml',
-            'points_per_side':          16,
-            'pred_iou_thresh':          0.82,
-            'stability_score_thresh':   0.85,
-            'min_mask_region_area':     1500,
-            'max_mask_area_fraction':   0.20,
-            'max_regions':              12,
+            'points_per_side':          8,
+            'pred_iou_thresh':          0.90,
+            'stability_score_thresh':   0.92,
+            'min_mask_region_area':     3000,
+            'max_mask_area_fraction':   0.10,
+            'max_regions':              6,
             'ground_truth':             [
                 'chair_1:-3.0:2.0',
                 'chair_2:-3.5:-2.5',

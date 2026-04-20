@@ -5,13 +5,15 @@ import random
 import re
 import gc
 import threading
-from collections import Counter
+from collections import Counter, defaultdict
 
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='scipy')
 
+import numpy as np
 import cv2
 import torch
+from sklearn.cluster import DBSCAN
 import rclpy
 from rclpy.node import Node
 from std_srvs.srv import Trigger
@@ -118,7 +120,6 @@ class VlmLabelNodeVit(Node):
             self.get_logger().error(f'[{self.run_name}] Notify callback error: {e}')
 
     def _run(self):
-        # Load model only when pipeline is triggered
         self._load_model()
 
         try:
@@ -126,13 +127,17 @@ class VlmLabelNodeVit(Node):
             self.get_logger().info(f'[{self.run_name}] Env context: {env_context}')
 
             results   = {}
-            obj_files = sorted([f for f in os.listdir(self.det_objects_dir) if f.endswith('.jpg')])
+            obj_files = sorted([
+                f for f in os.listdir(self.det_objects_dir) if f.endswith('.jpg')
+            ])
 
             if not obj_files:
                 self.get_logger().warn(f'[{self.run_name}] No SAM2 object crops found.')
                 return False
 
-            self.get_logger().info(f'[{self.run_name}] Processing {len(obj_files)} SAM2 crops...')
+            self.get_logger().info(
+                f'[{self.run_name}] Processing {len(obj_files)} SAM2 crops...'
+            )
 
             for obj_file in obj_files:
                 obj_path    = os.path.join(self.det_objects_dir, obj_file)
@@ -161,13 +166,14 @@ class VlmLabelNodeVit(Node):
 
             with open(self.vlm_output_path, 'w') as f:
                 json.dump(results, f, indent=2)
-            self.get_logger().info(f'[{self.run_name}] VIT VLM labels saved: {self.vlm_output_path}')
+            self.get_logger().info(
+                f'[{self.run_name}] VIT VLM labels saved: {self.vlm_output_path}'
+            )
 
             self._build_vlm_object_stack(results)
             return True
 
         finally:
-            # Unload model to free VRAM after pipeline completes
             self.get_logger().info(f'[{self.run_name}] Unloading VLM model to free VRAM...')
             del self.model
             del self.processor
@@ -182,8 +188,7 @@ class VlmLabelNodeVit(Node):
             return 'No environment context available.'
 
         env_files = sorted([
-            f for f in os.listdir(self.env_frames_dir)
-            if f.endswith('.jpg')
+            f for f in os.listdir(self.env_frames_dir) if f.endswith('.jpg')
         ])
 
         if not env_files:
@@ -215,7 +220,7 @@ class VlmLabelNodeVit(Node):
 
     def _clean_label(self, label):
         if not label:
-            return label
+            return 'none'
         label = label.lower().strip()
         label = re.sub(r'\b(\w+)\1\b', r'\1', label)
         words   = label.split()
@@ -281,59 +286,123 @@ class VlmLabelNodeVit(Node):
             return None
 
     def _build_vlm_object_stack(self, results):
-        vit_stack_path = os.path.join(self.output_dir, f'{self.run_name}_vit_object_stack.json')
-        if not os.path.exists(vit_stack_path):
+        ray_data_path = os.path.join(
+            self.output_dir, f'{self.run_name}_crop_ray_data.json'
+        )
+        if not os.path.exists(ray_data_path):
             self.get_logger().warn(
-                f'[{self.run_name}] {self.run_name}_vit_object_stack.json not found.'
+                f'[{self.run_name}] crop_ray_data.json not found — cannot rebuild.'
             )
             return
 
-        with open(vit_stack_path, 'r') as f:
-            vit_stack = json.load(f)
+        with open(ray_data_path, 'r') as f:
+            crop_ray_data = json.load(f)
 
-        # Collect VLM votes per region key
-        vlm_votes = {}
-        for entry in results.values():
-            region_id = entry['region_id']
-            vlm_label = entry['vlm_label']
+        # Build filtered ray stacks — only VLM-confirmed (non-none) crops
+        filtered_ray_stack = defaultdict(list)
+
+        for crop_filename, ray_info in crop_ray_data.items():
+            if crop_filename not in results:
+                continue
+            vlm_label = results[crop_filename]['vlm_label']
             if vlm_label == 'none':
                 continue
-            if region_id not in vlm_votes:
-                vlm_votes[region_id] = []
-            vlm_votes[region_id].append(vlm_label)
+            origin_2d = np.array(ray_info['origin'])
+            ray_2d    = np.array(ray_info['ray'])
+            filtered_ray_stack[vlm_label].append((origin_2d, ray_2d))
 
-        vlm_object_stack = {}
-        for cluster_key, data in vit_stack.items():
-            # cluster_key format: region00 or region00_1
-            base_region = cluster_key.rsplit('_', 1)[0] if '_' in cluster_key else cluster_key
+        self.get_logger().info(
+            f'[{self.run_name}] VLM-confirmed labels: {list(filtered_ray_stack.keys())}'
+        )
 
-            if base_region in vlm_votes and vlm_votes[base_region]:
-                vote_counts    = Counter(vlm_votes[base_region]).most_common()
-                majority_label = vote_counts[0][0]
-                if len(vote_counts) > 1 and vote_counts[0][1] == vote_counts[1][1]:
-                    majority_label = base_region
-            else:
-                self.get_logger().info(
-                    f'[{self.run_name}] Cluster "{cluster_key}" -> no valid VLM votes, skipping.'
-                )
+        # Triangulate per VLM label
+        filtered_candidates = defaultdict(list)
+        min_angle_deg = 8.0
+        total_tri     = 0
+        total_skip    = 0
+
+        for label, rays in filtered_ray_stack.items():
+            for i in range(len(rays)):
+                for j in range(i + 1, len(rays)):
+                    o1, d1 = rays[i]
+                    o2, d2 = rays[j]
+                    cos_a  = np.clip(np.dot(d1, d2), -1.0, 1.0)
+                    angle  = np.degrees(np.arccos(cos_a))
+                    if angle < min_angle_deg:
+                        total_skip += 1
+                        continue
+                    A     = np.array([[d1[0], -d2[0]], [d1[1], -d2[1]]])
+                    b     = o2 - o1
+                    denom = A[0,0]*A[1,1] - A[0,1]*A[1,0]
+                    if abs(denom) < 1e-6:
+                        continue
+                    t1 = (b[0]*A[1,1] - b[1]*A[0,1]) / denom
+                    t2 = (A[0,0]*b[1] - A[1,0]*b[0]) / denom
+                    if t1 < 0 or t2 < 0:
+                        continue
+                    pt = ((o1 + t1*d1) + (o2 + t2*d2)) / 2.0
+                    filtered_candidates[label].append((float(pt[0]), float(pt[1])))
+                    total_tri += 1
+
+        self.get_logger().info(
+            f'[{self.run_name}] Filtered triangulation: {total_tri} pts, '
+            f'{total_skip} skipped'
+        )
+
+        # DBSCAN cluster per label — keep largest cluster only
+        vlm_object_stack   = {}
+        dbscan_eps         = 1.0
+        dbscan_min_samples = 3
+
+        for label, candidates in filtered_candidates.items():
+            if len(candidates) == 0:
                 continue
 
-            vlm_object_stack[majority_label] = {
-                'x':              data['x'],
-                'y':              data['y'],
-                'num_candidates': data['num_candidates'],
-                'region_key':     cluster_key,
-                'vlm_label':      majority_label
-            }
+            pts = np.array(candidates)
 
+            if len(pts) < dbscan_min_samples:
+                vlm_object_stack[label] = {
+                    'x':              round(float(np.median(pts[:,0])), 4),
+                    'y':              round(float(np.median(pts[:,1])), 4),
+                    'num_candidates': len(pts),
+                    'vlm_label':      label,
+                    'region_key':     label
+                }
+                continue
+
+            db        = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples).fit(pts)
+            labels_db = db.labels_
+            unique_clusters = set(labels_db) - {-1}
+
+            if not unique_clusters:
+                continue
+
+            best_cluster = max(unique_clusters, key=lambda c: (labels_db == c).sum())
+            cluster_pts  = pts[labels_db == best_cluster]
+            final_x      = round(float(np.median(cluster_pts[:,0])), 4)
+            final_y      = round(float(np.median(cluster_pts[:,1])), 4)
+
+            vlm_object_stack[label] = {
+                'x':              final_x,
+                'y':              final_y,
+                'num_candidates': len(cluster_pts),
+                'vlm_label':      label,
+                'region_key':     label
+            }
             self.get_logger().info(
-                f'[{self.run_name}] Cluster "{cluster_key}" -> VLM: "{majority_label}"'
+                f'[{self.run_name}] "{label}" -> ({final_x}, {final_y}) '
+                f'from {len(cluster_pts)} candidates'
             )
 
-        vlm_stack_path = os.path.join(self.output_dir, f'{self.run_name}_vit_vlm_object_stack.json')
+        vlm_stack_path = os.path.join(
+            self.output_dir, f'{self.run_name}_vit_vlm_object_stack.json'
+        )
         with open(vlm_stack_path, 'w') as f:
             json.dump(vlm_object_stack, f, indent=2)
-        self.get_logger().info(f'[{self.run_name}] VIT VLM object stack saved: {vlm_stack_path}')
+        self.get_logger().info(
+            f'[{self.run_name}] VIT VLM object stack saved: {vlm_stack_path} '
+            f'({len(vlm_object_stack)} objects)'
+        )
 
 
 def main(args=None):
