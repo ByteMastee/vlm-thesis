@@ -7,11 +7,11 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     run_name_arg = DeclareLaunchArgument(
-        'run_name', default_value='run_vit_07',
+        'run_name', default_value='run_vit_13',
         description='Run identifier for output files'
     )
     process_delay_arg = DeclareLaunchArgument(
-        'process_delay', default_value='400.0',
+        'process_delay', default_value='100.0',
         description='Seconds to wait before triggering final processing'
     )
     output_dir_arg = DeclareLaunchArgument(
@@ -35,12 +35,12 @@ def generate_launch_description():
             'image_topic':              '/fisheye_front/fisheye_front/image_raw',
             'cam_info_topic':           '/fisheye_front/fisheye_front/camera_info',
             'odom_topic':               '/odom',
-            'frame_skip':               25,
+            'frame_skip':               20,
             'min_angle_deg':            5.0,
             'dbscan_eps':               1.5,
             'dbscan_min_samples':       2,
             'ray_length':               8.0,
-            'env_frame_interval':       20,
+            'env_frame_interval':       10,
             'sam2_checkpoint':          '/root/sam2_checkpoints/sam2.1_hiera_small.pt',
             'sam2_model_cfg':           'configs/sam2.1/sam2.1_hiera_s.yaml',
             'points_per_side':          8,
@@ -67,11 +67,14 @@ def generate_launch_description():
                 name='vlm_label_node_vit',
                 output='screen',
                 parameters=[{
-                    'run_name':         run_name,
-                    'output_dir':       output_dir,
-                    'model_path':       '/root/UVC_ws/models/qwen2.5-vl-3b',
-                    'max_new_tokens':   128,
-                    'env_sample_count': 5,
+                    'run_name':           run_name,
+                    'output_dir':         output_dir,
+                    'model_path':         '/root/UVC_ws/models/qwen2.5-vl-3b',
+                    'max_new_tokens':     128,
+                    'env_sample_count':   5,
+                    'min_angle_deg':      3.0,
+                    'dbscan_eps':         1.0,
+                    'dbscan_min_samples': 2,
                 }]
             )
         ]

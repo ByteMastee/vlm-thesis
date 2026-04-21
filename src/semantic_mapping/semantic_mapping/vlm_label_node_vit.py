@@ -5,13 +5,12 @@ import random
 import re
 import gc
 import threading
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='scipy')
 
 import numpy as np
-import cv2
 import torch
 from sklearn.cluster import DBSCAN
 import rclpy
@@ -28,16 +27,22 @@ class VlmLabelNodeVit(Node):
     def __init__(self):
         super().__init__('vlm_label_node_vit')
 
-        self.declare_parameter('run_name',         'run_01')
-        self.declare_parameter('output_dir',       '')
-        self.declare_parameter('model_path',       '/root/UVC_ws/models/qwen2.5-vl-3b')
-        self.declare_parameter('max_new_tokens',   128)
-        self.declare_parameter('env_sample_count', 5)
+        self.declare_parameter('run_name',           'run_01')
+        self.declare_parameter('output_dir',         '')
+        self.declare_parameter('model_path',         '/root/UVC_ws/models/qwen2.5-vl-3b')
+        self.declare_parameter('max_new_tokens',     128)
+        self.declare_parameter('env_sample_count',   5)
+        self.declare_parameter('min_angle_deg',      3.0)
+        self.declare_parameter('dbscan_eps',         1.0)
+        self.declare_parameter('dbscan_min_samples', 2)
 
-        self.run_name         = self.get_parameter('run_name').value
-        self.model_path       = self.get_parameter('model_path').value
-        self.max_new_tokens   = self.get_parameter('max_new_tokens').value
-        self.env_sample_count = self.get_parameter('env_sample_count').value
+        self.run_name           = self.get_parameter('run_name').value
+        self.model_path         = self.get_parameter('model_path').value
+        self.max_new_tokens     = self.get_parameter('max_new_tokens').value
+        self.env_sample_count   = self.get_parameter('env_sample_count').value
+        self.min_angle_deg      = self.get_parameter('min_angle_deg').value
+        self.dbscan_eps         = self.get_parameter('dbscan_eps').value
+        self.dbscan_min_samples = self.get_parameter('dbscan_min_samples').value
 
         output_dir_param = self.get_parameter('output_dir').value
         if output_dir_param:
@@ -54,8 +59,11 @@ class VlmLabelNodeVit(Node):
         self.processor        = None
 
         self.get_logger().info(f'vlm_label_node_vit starting | RUN_NAME: {self.run_name}')
-        self.get_logger().info(f'  output_dir : {self.output_dir}')
-        self.get_logger().info(f'  model_path : {self.model_path}')
+        self.get_logger().info(f'  output_dir        : {self.output_dir}')
+        self.get_logger().info(f'  model_path        : {self.model_path}')
+        self.get_logger().info(f'  min_angle_deg     : {self.min_angle_deg}')
+        self.get_logger().info(f'  dbscan_eps        : {self.dbscan_eps}')
+        self.get_logger().info(f'  dbscan_min_samples: {self.dbscan_min_samples}')
 
         self.srv = self.create_service(
             Trigger, 'run_vlm_pipeline_vit', self._vlm_pipeline_service_cb
@@ -142,9 +150,11 @@ class VlmLabelNodeVit(Node):
             for obj_file in obj_files:
                 obj_path    = os.path.join(self.det_objects_dir, obj_file)
                 name_no_ext = os.path.splitext(obj_file)[0]
-                parts       = name_no_ext.split('_', 1)
-                frame_id    = parts[0]
-                region_id   = parts[1] if len(parts) > 1 else 'region00'
+                # filename format: f00001_obj_000.jpg
+                # frame_id = f00001, region_id = obj_000
+                underscore_idx = name_no_ext.index('_')
+                frame_id       = name_no_ext[:underscore_idx]
+                region_id      = name_no_ext[underscore_idx + 1:]
 
                 t_start   = time.time()
                 vlm_label = self._get_vlm_label(obj_path=obj_path, env_context=env_context)
@@ -234,13 +244,17 @@ class VlmLabelNodeVit(Node):
         object_prompt = (
             f'You are a robot perception system in an indoor environment. '
             f'Environment context: {env_context} '
-            f'You are given a cropped image of a detected region from the environment. '
-            f'Task: Provide a short label for the object in the crop. '
+            f'You are given a cropped image of a segmented region detected by a vision model. '
+            f'Task: Provide a short label for the main object shown in the crop. '
             f'Rules: '
-            f'1. If the crop shows a real indoor object, reply with a specific short label '
-            f'(e.g. blue chair, wooden table, dark sofa). '
-            f'2. If the crop shows a wall, floor, ceiling, or background, reply with the single word: none '
-            f'3. If the crop is unclear, reply with the single word: none '
+            f'1. If the crop clearly shows a real indoor object (furniture, appliance, item), '
+            f'reply with a specific short label (e.g. blue chair, wooden table, red sofa). '
+            f'2. If the crop is mostly a single flat color (gray, white, beige) with no distinct object, '
+            f'reply with the single word: none '
+            f'3. If the crop shows a wall, floor, ceiling, shadow, or structural surface, '
+            f'reply with the single word: none '
+            f'4. If the crop is too small, blurry, or unclear to identify, '
+            f'reply with the single word: none '
             f'Reply with the label only. No explanation.'
         )
 
@@ -266,7 +280,13 @@ class VlmLabelNodeVit(Node):
             ).to('cuda:0')
 
             with torch.no_grad():
-                output = self.model.generate(**inputs, max_new_tokens=max_new_tokens)
+                output = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False,
+                    temperature=None,
+                    top_p=None
+                )
 
             response = self.processor.decode(
                 output[0][inputs.input_ids.shape[1]:],
@@ -311,15 +331,22 @@ class VlmLabelNodeVit(Node):
             ray_2d    = np.array(ray_info['ray'])
             filtered_ray_stack[vlm_label].append((origin_2d, ray_2d))
 
+        # Filter out labels with fewer than 3 rays — not enough for reliable triangulation
+        filtered_ray_stack = {
+            label: rays
+            for label, rays in filtered_ray_stack.items()
+            if len(rays) >= 3
+        }
+
         self.get_logger().info(
-            f'[{self.run_name}] VLM-confirmed labels: {list(filtered_ray_stack.keys())}'
+            f'[{self.run_name}] VLM-confirmed labels after ray count filter: '
+            f'{list(filtered_ray_stack.keys())}'
         )
 
         # Triangulate per VLM label
         filtered_candidates = defaultdict(list)
-        min_angle_deg = 8.0
-        total_tri     = 0
-        total_skip    = 0
+        total_tri  = 0
+        total_skip = 0
 
         for label, rays in filtered_ray_stack.items():
             for i in range(len(rays)):
@@ -328,19 +355,19 @@ class VlmLabelNodeVit(Node):
                     o2, d2 = rays[j]
                     cos_a  = np.clip(np.dot(d1, d2), -1.0, 1.0)
                     angle  = np.degrees(np.arccos(cos_a))
-                    if angle < min_angle_deg:
+                    if angle < self.min_angle_deg:
                         total_skip += 1
                         continue
                     A     = np.array([[d1[0], -d2[0]], [d1[1], -d2[1]]])
                     b     = o2 - o1
-                    denom = A[0,0]*A[1,1] - A[0,1]*A[1,0]
+                    denom = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]
                     if abs(denom) < 1e-6:
                         continue
-                    t1 = (b[0]*A[1,1] - b[1]*A[0,1]) / denom
-                    t2 = (A[0,0]*b[1] - A[1,0]*b[0]) / denom
+                    t1 = (b[0] * A[1, 1] - b[1] * A[0, 1]) / denom
+                    t2 = (A[0, 0] * b[1] - A[1, 0] * b[0]) / denom
                     if t1 < 0 or t2 < 0:
                         continue
-                    pt = ((o1 + t1*d1) + (o2 + t2*d2)) / 2.0
+                    pt = ((o1 + t1 * d1) + (o2 + t2 * d2)) / 2.0
                     filtered_candidates[label].append((float(pt[0]), float(pt[1])))
                     total_tri += 1
 
@@ -350,9 +377,7 @@ class VlmLabelNodeVit(Node):
         )
 
         # DBSCAN cluster per label — keep largest cluster only
-        vlm_object_stack   = {}
-        dbscan_eps         = 1.0
-        dbscan_min_samples = 3
+        vlm_object_stack = {}
 
         for label, candidates in filtered_candidates.items():
             if len(candidates) == 0:
@@ -360,17 +385,17 @@ class VlmLabelNodeVit(Node):
 
             pts = np.array(candidates)
 
-            if len(pts) < dbscan_min_samples:
+            if len(pts) < self.dbscan_min_samples:
                 vlm_object_stack[label] = {
-                    'x':              round(float(np.median(pts[:,0])), 4),
-                    'y':              round(float(np.median(pts[:,1])), 4),
+                    'x':              round(float(np.median(pts[:, 0])), 4),
+                    'y':              round(float(np.median(pts[:, 1])), 4),
                     'num_candidates': len(pts),
                     'vlm_label':      label,
                     'region_key':     label
                 }
                 continue
 
-            db        = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples).fit(pts)
+            db        = DBSCAN(eps=self.dbscan_eps, min_samples=self.dbscan_min_samples).fit(pts)
             labels_db = db.labels_
             unique_clusters = set(labels_db) - {-1}
 
@@ -379,8 +404,8 @@ class VlmLabelNodeVit(Node):
 
             best_cluster = max(unique_clusters, key=lambda c: (labels_db == c).sum())
             cluster_pts  = pts[labels_db == best_cluster]
-            final_x      = round(float(np.median(cluster_pts[:,0])), 4)
-            final_y      = round(float(np.median(cluster_pts[:,1])), 4)
+            final_x      = round(float(np.median(cluster_pts[:, 0])), 4)
+            final_y      = round(float(np.median(cluster_pts[:, 1])), 4)
 
             vlm_object_stack[label] = {
                 'x':              final_x,
