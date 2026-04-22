@@ -3,7 +3,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'run_10'
+RUN_NAME = 'RWrun_1'
 
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
@@ -11,6 +11,14 @@ OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 def generate_launch_description():
     return LaunchDescription([
+
+        # --- Fisheye Rectification Node ---
+        Node(
+            package    = 'semantic_mapping',
+            executable = 'fisheye_rectify_node',
+            name       = 'fisheye_rectify_node',
+            output     = 'screen',
+        ),
 
         # --- VLM Label Node ---
         Node(
@@ -35,7 +43,7 @@ def generate_launch_description():
             output     = 'screen',
             parameters = [
                 {'run_name'          : RUN_NAME},
-                {'image_topic'       : '/fisheye_front/fisheye_front/image_raw'},
+                {'image_topic'       : '/fisheye_front/fisheye_front/image_rect'},
                 {'cam_info_topic'    : '/fisheye_front/fisheye_front/camera_info'},
                 {'odom_topic'        : '/odom'},
                 {'frame_skip'        : 12},
