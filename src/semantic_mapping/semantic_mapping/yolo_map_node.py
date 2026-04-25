@@ -208,9 +208,9 @@ class YoloMapNode:
         try:
             tf_stamped = self.tf_buffer.lookup_transform(
                 'odom',
-                'camera_fisheye_front_optical_frame',
+                'fisheye_front_optical_frame',
                 rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.1)
+                timeout=rclpy.duration.Duration(seconds=0.5)
             )
         except Exception as e:
             self.logger.warn(f'TF lookup failed: {e}')
@@ -342,11 +342,12 @@ class YoloMapNode:
             plt.plot(self.robot_x[0],  self.robot_y[0],  'go', markersize=8)
             plt.plot(self.robot_x[-1], self.robot_y[-1], 'rs', markersize=8)
 
-        for label, (gx, gy) in self.ground_truth.items():
-            plt.plot(gx, gy, 'g^', markersize=12)
-            plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
-                         textcoords='offset points', xytext=(8, 8),
-                         fontsize=9, color='green')
+        if self.ground_truth:
+            for label, (gx, gy) in self.ground_truth.items():
+                plt.plot(gx, gy, 'g^', markersize=12)
+                plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
+                            textcoords='offset points', xytext=(8, 8),
+                            fontsize=9, color='green')
 
         colors = ['red', 'orange', 'purple', 'cyan', 'magenta']
         for i, (label, data) in enumerate(self.object_stack.items()):
@@ -358,33 +359,29 @@ class YoloMapNode:
                          textcoords='offset points', xytext=(8, -18),
                          fontsize=9, color=color)
 
-            best_dist        = float('inf')
-            best_gx, best_gy = None, None
-            for gt_label, (gx, gy) in self.ground_truth.items():
-                dist = np.sqrt((ox - gx)**2 + (oy - gy)**2)
-                if dist < best_dist:
-                    best_dist        = dist
-                    best_gx, best_gy = gx, gy
-
-            if best_gx is not None:
-                plt.plot([ox, best_gx], [oy, best_gy], '--', color=color, linewidth=1.0)
-                plt.text((ox + best_gx) / 2, (oy + best_gy) / 2,
-                         f'{best_dist:.2f}m', fontsize=8, color=color)
-
         plt.xlabel('X (m)')
         plt.ylabel('Y (m)')
-        plt.title(f'Semantic Map — {self.run_name} — Detected vs Ground Truth')
-        plt.legend(handles=[
-            plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
-                       markersize=10, label='Ground Truth'),
+        
+        title = f'Semantic Map — {self.run_name}'
+        if self.ground_truth:
+            title += ' — Detected vs Ground Truth'
+        plt.title(title)
+        
+        legend_handles = [
             plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='red',
-                       markersize=10, label='Detected'),
+                    markersize=10, label='Detected'),
             plt.Line2D([0], [0], color='blue', linewidth=1.0, label='Robot path'),
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green',
-                       markersize=8, label='Start'),
+                    markersize=8, label='Start'),
             plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='red',
-                       markersize=8, label='End')
-        ])
+                    markersize=8, label='End')
+        ]
+        if self.ground_truth:
+            legend_handles.insert(0, plt.Line2D([0], [0], marker='^', color='w',
+                                markerfacecolor='green', markersize=10, label='Ground Truth'))
+        plt.legend(handles=legend_handles)
+
+
         plt.grid(True)
         plt.axis('equal')
 

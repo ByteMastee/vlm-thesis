@@ -3,7 +3,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'RWrun_1'
+RUN_NAME = 'RWrun_16'
 
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Testing'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
@@ -31,7 +31,7 @@ def generate_launch_description():
                 {'output_dir'       : OUTPUT_DIR},
                 {'model_path'       : '/root/UVC_ws/models/qwen2.5-vl-3b'},
                 {'max_new_tokens'   : 128},
-                {'env_sample_count' : 6},
+                {'env_sample_count' : 5},
             ]
         ),
 
@@ -46,22 +46,16 @@ def generate_launch_description():
                 {'image_topic'       : '/fisheye_front/fisheye_front/image_rect'},
                 {'cam_info_topic'    : '/fisheye_front/fisheye_front/camera_info'},
                 {'odom_topic'        : '/odom'},
-                {'frame_skip'        : 12},
+                {'frame_skip'        : 10},
                 {'confidence'        : 0.50},
                 {'model_path'        : '/root/yolo26m.pt'},
                 {'output_dir'        : OUTPUT_DIR},
-                {'min_angle_deg'     : 8.0},
+                {'min_angle_deg'     : 6.0},
                 {'dbscan_eps'        : 1.0},
-                {'dbscan_min_samples': 2},
+                {'dbscan_min_samples': 4},
                 {'ray_length'        : 8.0},
-                {'process_delay'     : 2.0},
-                {'env_frame_interval': 8},
-                {'ground_truth'      : [
-                    'chair_1:-3.0:2.0',
-                    'chair_2:-3.5:-2.5',
-                    'couch:3.5:0.0',
-                    'table:2.0:2.5'
-                ]},
+                {'process_delay'     : 60.0},
+                {'env_frame_interval': 10},
             ]
         ),
 

@@ -242,7 +242,7 @@ class VlmLabelNode(Node):
                 {'type': 'image', 'image': img_path},
                 {'type': 'text',  'text': env_prompt}
             ]
-            desc = self._query_vlm(content, max_new_tokens=96)
+            desc = self._query_vlm(content, max_new_tokens=48)
             if desc:
                 descriptions.append(desc)
                 self.get_logger().info(f'[{self.run_name}] Env [{fname}]: {desc}')
@@ -300,41 +300,57 @@ class VlmLabelNode(Node):
     # -----------------------------------------------------------------------
 
     def _query_vlm(self, content_list, max_new_tokens=128):
-        try:
-            messages = [{'role': 'user', 'content': content_list}]
+        for attempt in range(2):
+            try:
+                messages = [{'role': 'user', 'content': content_list}]
 
-            text = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            image_inputs, video_inputs = process_vision_info(messages)
-            inputs = self.processor(
-                text=[text],
-                images=image_inputs,
-                return_tensors='pt'
-            ).to('cuda:0')
-
-            with torch.no_grad():
-                output = self.model.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens
+                text = self.processor.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
                 )
+                image_inputs, video_inputs = process_vision_info(messages)
+                inputs = self.processor(
+                    text=[text],
+                    images=image_inputs,
+                    return_tensors='pt'
+                ).to('cuda:0')
 
-            response = self.processor.decode(
-                output[0][inputs.input_ids.shape[1]:],
-                skip_special_tokens=True
-            ).strip()
+                with torch.no_grad():
+                    output = self.model.generate(
+                        **inputs,
+                        max_new_tokens=max_new_tokens
+                    )
 
-            del inputs, output
-            gc.collect()
-            torch.cuda.empty_cache()
+                response = self.processor.decode(
+                    output[0][inputs.input_ids.shape[1]:],
+                    skip_special_tokens=True
+                ).strip()
 
-            return response if response else None
+                del inputs, output
+                gc.collect()
+                torch.cuda.empty_cache()
 
-        except Exception as e:
-            self.get_logger().warn(f'[{self.run_name}] VLM inference error: {e}')
-            gc.collect()
-            torch.cuda.empty_cache()
-            return None
+                return response if response else None
+
+            except torch.cuda.OutOfMemoryError:
+                self.get_logger().warn(
+                    f'[{self.run_name}] CUDA OOM on attempt {attempt + 1} — flushing and retrying...'
+                )
+                try:
+                    del inputs
+                except Exception:
+                    pass
+                gc.collect()
+                torch.cuda.empty_cache()
+                time.sleep(1.0)
+
+            except Exception as e:
+                self.get_logger().warn(f'[{self.run_name}] VLM inference error: {e}')
+                gc.collect()
+                torch.cuda.empty_cache()
+                return None
+
+        self.get_logger().warn(f'[{self.run_name}] VLM inference failed after 2 attempts — skipping.')
+        return None
 
     # -----------------------------------------------------------------------
     # Step 4 — Majority vote per YOLO cluster -> vlm_object_stack.json

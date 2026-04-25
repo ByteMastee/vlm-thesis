@@ -4,7 +4,9 @@ import json
 import threading
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
+from tf2_msgs.msg import TFMessage
+
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import MarkerArray
@@ -22,9 +24,8 @@ class RosBridgeNode(Node):
     def __init__(self):
         super().__init__('ros_node')
 
-        # --- Parameters ---
         self.declare_parameter('run_name',           'run_01')
-        self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_raw')
+        self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_rect')
         self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
         self.declare_parameter('odom_topic',         '/odom')
         self.declare_parameter('frame_skip',         12)
@@ -37,7 +38,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('ray_length',         8.0)
         self.declare_parameter('process_delay',      95.0)
         self.declare_parameter('env_frame_interval', 20)
-        self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
+        self.declare_parameter('ground_truth',       [''])
 
         self.run_name = self.get_parameter('run_name').value
 
@@ -55,26 +56,40 @@ class RosBridgeNode(Node):
         process_delay           = self.get_parameter('process_delay').value
         self.env_frame_interval = self.get_parameter('env_frame_interval').value
 
-        # --- Output dir: use parameter if provided, else build from run_name ---
         output_dir_param = self.get_parameter('output_dir').value
         if output_dir_param:
             self.output_dir = output_dir_param
         else:
             self.output_dir = os.path.join(BASE_OUTPUT_DIR, self.run_name)
 
+        # --- Ground truth: optional ---
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
-        for entry in gt_raw:
-            parts = entry.split(':')
-            self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
+        if gt_raw and gt_raw != ['']:
+            for entry in gt_raw:
+                parts = entry.split(':')
+                if len(parts) == 3:
+                    self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # --- TF2 Buffer and Listener ---
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # --- State ---
+        # --- Fix /tf_static QoS mismatch from bag ---
+        _static_qos = QoSProfile(
+            depth=100,
+            durability=DurabilityPolicy.VOLATILE,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST
+        )
+        self.create_subscription(
+            TFMessage,
+            '/tf_static',
+            self._tf_static_cb,
+            _static_qos
+        )
+
         self.latest_odom         = None
         self.cam_info            = None
         self.is_calibrated       = False
@@ -86,46 +101,40 @@ class RosBridgeNode(Node):
         self.gt_published        = False
         self.cached_marker_array = None
         self.cached_vlm_markers  = None
-        self.last_frame_time       = None
+        self.last_frame_time     = None
 
-        # --- Functional nodes ---
         self.yolo_map_node  = None
         self.rviz_publisher = None
 
-        # --- QoS ---
         latched_qos = QoSProfile(
             depth=1,
             durability=DurabilityPolicy.TRANSIENT_LOCAL
         )
 
-        # --- Publishers ---
         self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
         self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',        10)
         self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
 
-        # --- Subscribers ---
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
         self.create_subscription(Image,      image_topic,    self.image_cb,    10)
         self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)
 
-        # --- Service client: call vlm_label_node to trigger VLM pipeline ---
         self.vlm_client = self.create_client(Trigger, 'run_vlm_pipeline')
-
-        # --- Service server: vlm_label_node calls this when pipeline is done ---
         self.create_service(Trigger, 'vlm_pipeline_done', self._vlm_done_cb)
-
-        # --- Republish timer: keeps markers alive for RViz uncheck/recheck ---
         self.create_timer(3.0, self._republish_markers)
-
-        # --- Process timer ---
         self.create_timer(process_delay, self.process)
 
         self.get_logger().info(f'ros_node started | RUN_NAME: {self.run_name}')
         self.get_logger().info(f'output_dir: {self.output_dir}')
         self.get_logger().info(f'process will trigger in {process_delay}s')
+        self.get_logger().info(f'ground_truth: {"disabled" if not self.ground_truth else self.ground_truth}')
         self.get_logger().info('Start bag playback now.')
 
-    # --- Callbacks ---
+    def _tf_static_cb(self, msg):
+        for transform in msg.transforms:
+            transform.header.stamp.sec     = 0
+            transform.header.stamp.nanosec = 0
+            self.tf_buffer.set_transform_static(transform, 'default_authority')
 
     def cam_info_cb(self, msg):
         if self.is_calibrated:
@@ -162,7 +171,7 @@ class RosBridgeNode(Node):
             logger=self.get_logger()
         )
 
-        # Publish GT markers once
+        # Publish GT markers only if GT is provided
         if self.ground_truth and not self.gt_published:
             gt_markers = self.rviz_publisher.build_gt_markers(
                 self.ground_truth, self.get_clock()
@@ -171,6 +180,8 @@ class RosBridgeNode(Node):
             self.cached_marker_array = gt_markers
             self.gt_published        = True
             self.get_logger().info(f'[{self.run_name}] GT markers published.')
+        else:
+            self.get_logger().info(f'[{self.run_name}] No GT — skipping GT markers.')
 
         self.get_logger().info(f'[{self.run_name}] Functional nodes initialized.')
 
@@ -227,15 +238,11 @@ class RosBridgeNode(Node):
     def odom_cb(self, msg):
         self.latest_odom = msg
 
-    # --- Process ---
-
     def process(self):
         if self.process_done:
             return
-
         if self.last_frame_time is None:
             return
-
         if time.time() - self.last_frame_time < 5.0:
             return
 
@@ -244,7 +251,6 @@ class RosBridgeNode(Node):
         if not self.is_calibrated:
             self.get_logger().warn(f'[{self.run_name}] Process triggered — camera not calibrated, aborting.')
             return
-
         if self.processed_count == 0:
             self.get_logger().warn(f'[{self.run_name}] Process triggered — no frames processed, aborting.')
             return
@@ -286,11 +292,8 @@ class RosBridgeNode(Node):
 
         self.get_logger().info(f'[{self.run_name}] YOLO mapping complete — calling VLM pipeline...')
 
-        # --- Call VLM pipeline in separate thread ---
         thread = threading.Thread(target=self._call_vlm_service, daemon=True)
         thread.start()
-
-    # --- VLM service call (runs in separate thread) ---
 
     def _call_vlm_service(self):
         if not self.vlm_client.wait_for_service(timeout_sec=10.0):
@@ -323,8 +326,6 @@ class RosBridgeNode(Node):
         except Exception as e:
             self.get_logger().error(f'[{self.run_name}] VLM service call error: {e}')
 
-    # --- VLM pipeline done callback (called by vlm_label_node) ---
-
     def _vlm_done_cb(self, request, response):
         self.get_logger().info(f'[{self.run_name}] VLM pipeline complete — publishing VLM markers.')
 
@@ -355,8 +356,6 @@ class RosBridgeNode(Node):
         response.success = True
         response.message = 'VLM markers published.'
         return response
-
-    # --- Republish timer ---
 
     def _republish_markers(self):
         if self.cached_marker_array is not None:
