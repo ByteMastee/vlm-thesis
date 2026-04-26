@@ -7,13 +7,14 @@ import gc
 import torch
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import MarkerArray
 from std_srvs.srv import Trigger
 
 import tf2_ros
+from tf2_msgs.msg import TFMessage
 
 from semantic_mapping.sam2_map_node import SAM2MapNode
 from semantic_mapping.rviz_publisher_node import RvizPublisherNode
@@ -37,7 +38,7 @@ class RosBridgeNodeVit(Node):
         self.declare_parameter('ray_length',         8.0)
         self.declare_parameter('process_delay',      95.0)
         self.declare_parameter('env_frame_interval', 20)
-        self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
+        self.declare_parameter('ground_truth', [''])
         self.declare_parameter('sam2_checkpoint',    '/root/sam2_checkpoints/sam2.1_hiera_small.pt')
         self.declare_parameter('sam2_model_cfg',     'configs/sam2.1/sam2.1_hiera_s.yaml')
         self.declare_parameter('points_per_side',    16)
@@ -77,14 +78,30 @@ class RosBridgeNodeVit(Node):
 
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
-        for entry in gt_raw:
-            parts = entry.split(':')
-            self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
+        if gt_raw and gt_raw != ['']:
+            for entry in gt_raw:
+                parts = entry.split(':')
+                if len(parts) == 3:
+                    self.ground_truth[parts[0]] = (float(parts[1]), float(parts[2]))
 
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
+        # --- Fix /tf_static QoS mismatch from bag ---
+        _static_qos = QoSProfile(
+            depth=100,
+            durability=DurabilityPolicy.VOLATILE,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST
+        )
+        self.create_subscription(
+            TFMessage,
+            '/tf_static',
+            self._tf_static_cb,
+            _static_qos
+        )
 
         self.latest_odom        = None
         self.cam_info           = None
@@ -122,6 +139,12 @@ class RosBridgeNodeVit(Node):
         self.get_logger().info(f'output_dir: {self.output_dir}')
         self.get_logger().info(f'process will trigger in {process_delay}s')
         self.get_logger().info('Start bag playback now.')
+
+    def _tf_static_cb(self, msg):
+        for transform in msg.transforms:
+            transform.header.stamp.sec     = 0
+            transform.header.stamp.nanosec = 0
+            self.tf_buffer.set_transform_static(transform, 'default_authority')
 
     def cam_info_cb(self, msg):
         if self.is_calibrated:
@@ -169,6 +192,9 @@ class RosBridgeNodeVit(Node):
             self.marker_pub.publish(gt_markers)
             self.cached_marker_array = gt_markers
             self.gt_published        = True
+            self.get_logger().info(f'[{self.run_name}] GT markers published.')
+        else:
+            self.get_logger().info(f'[{self.run_name}] No GT — skipping GT markers.')
 
         self.get_logger().info(f'[{self.run_name}] SAM2 node initialized.')
 

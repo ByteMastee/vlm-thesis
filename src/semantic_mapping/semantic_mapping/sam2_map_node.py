@@ -207,7 +207,7 @@ class SAM2MapNode:
             })
 
         regions.sort(key=lambda r: r['score'], reverse=True)
-        regions = self._nms(regions, iou_thresh=0.4)
+        regions = self._nms(regions, iou_thresh=0.35)
         regions = regions[:self.max_regions]
 
         self.logger.info(
@@ -345,9 +345,9 @@ class SAM2MapNode:
         try:
             tf_stamped = self.tf_buffer.lookup_transform(
                 'odom',
-                'camera_fisheye_front_optical_frame',
+                'fisheye_front_optical_frame',
                 rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.1)
+                timeout=rclpy.duration.Duration(seconds=0.5)
             )
         except Exception as e:
             self.logger.warn(f'TF lookup failed: {e}')
@@ -387,6 +387,14 @@ class SAM2MapNode:
         p1       = o1 + t1 * d1
         p2       = o2 + t2 * d2
         midpoint = (p1 + p2) / 2.0
+
+        # Reject if intersection point is too far from either ray origin
+        MAX_OBJECT_DIST = 5.0
+        if np.linalg.norm(midpoint - o1) > MAX_OBJECT_DIST:
+            return None
+        if np.linalg.norm(midpoint - o2) > MAX_OBJECT_DIST:
+            return None
+
         return midpoint
 
     def _decode_image(self, msg):
@@ -469,11 +477,12 @@ class SAM2MapNode:
             plt.plot(self.robot_x[0],  self.robot_y[0],  'go', markersize=8)
             plt.plot(self.robot_x[-1], self.robot_y[-1], 'rs', markersize=8)
 
-        for label, (gx, gy) in self.ground_truth.items():
-            plt.plot(gx, gy, 'g^', markersize=12)
-            plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
-                         textcoords='offset points', xytext=(8, 8),
-                         fontsize=9, color='green')
+        if self.ground_truth:
+            for label, (gx, gy) in self.ground_truth.items():
+                plt.plot(gx, gy, 'g^', markersize=12)
+                plt.annotate(f'GT: {label}\n({gx},{gy})', (gx, gy),
+                            textcoords='offset points', xytext=(8, 8),
+                            fontsize=9, color='green')
 
         colors = ['red', 'orange', 'purple', 'cyan', 'magenta']
         for i, (label, data) in enumerate(self.object_stack.items()):
