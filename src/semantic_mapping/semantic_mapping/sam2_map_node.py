@@ -485,9 +485,33 @@ class SAM2MapNode:
                          textcoords='offset points', xytext=(8, -18),
                          fontsize=9, color=color)
 
+            best_dist        = float('inf')
+            best_gx, best_gy = None, None
+            for gt_label, (gx, gy) in self.ground_truth.items():
+                dist = np.sqrt((ox - gx)**2 + (oy - gy)**2)
+                if dist < best_dist:
+                    best_dist        = dist
+                    best_gx, best_gy = gx, gy
+
+            if best_gx is not None:
+                plt.plot([ox, best_gx], [oy, best_gy], '--', color=color, linewidth=1.0)
+                plt.text((ox + best_gx) / 2, (oy + best_gy) / 2,
+                         f'{best_dist:.2f}m', fontsize=8, color=color)
+
         plt.xlabel('X (m)')
         plt.ylabel('Y (m)')
-        plt.title(f'VIT+VLM Semantic Map — {self.run_name}')
+        plt.title(f'VIT+VLM Semantic Map — {self.run_name} — Detected vs Ground Truth')
+        plt.legend(handles=[
+            plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green',
+                       markersize=10, label='Ground Truth'),
+            plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='red',
+                       markersize=10, label='Detected'),
+            plt.Line2D([0], [0], color='blue', linewidth=1.0, label='Robot path'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green',
+                       markersize=8, label='Start'),
+            plt.Line2D([0], [0], marker='s', color='w', markerfacecolor='red',
+                       markersize=8, label='End')
+        ])
         plt.grid(True)
         plt.axis('equal')
 
