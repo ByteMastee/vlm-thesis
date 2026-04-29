@@ -282,8 +282,11 @@ class VlmLabelNode(Node):
             f'You are given a cropped image of that detected object. '
             f'Task: Provide a short improved label for the object in the crop. '
             f'Rules: '
-            f'1. If the crop shows a real indoor object, reply with a specific short label (e.g. blue chair, wooden table, dark sofa). '
-            f'2. If the crop is a false detection or shows something impossible indoors (e.g. airplane, outdoor sign), reply with the single word: none '
+            f'1. Focus only on the main foreground object that YOLO detected as "{yolo_label}". '
+            f'Ignore any background objects, walls, or furniture behind it. '
+            f'Reply with a specific short label (e.g. blue chair, wooden table, dark sofa, person in red shirt). '
+            f'2. If the crop is a false detection or shows something impossible indoors '
+            f'(e.g. airplane, outdoor sign), reply with the single word: none '
             f'Reply with the label only. No explanation.'
         )
 
