@@ -3,9 +3,9 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'E5_Path2_1'
+RUN_NAME = 'E1_Path2'
 
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/PreFinal'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Final'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 
@@ -45,19 +45,14 @@ def generate_launch_description():
                 {'min_angle_deg'     : 8.0},
                 {'dbscan_eps'        : 1.0},
                 {'dbscan_min_samples': 2},
-                {'ray_length'        : 10.0},
+                {'ray_length'        : 8.0},
                 {'process_delay'     : 2.0},
                 {'env_frame_interval': 8},
                 {'ground_truth'      : [
-                    'sofa:-5.5:3.5',
-                    'side_table:-2.0:4.5',
-                    'coffee_table:0.5:3.0',
-                    'cabinet:5.5:4.5',
-                    'wall_clock:-7.7:0.0',
-                    'laptop_desk:4.0:-1.0',
-                    'desk_chair:5.2:-1.0',
-                    'coat_rack:1.5:-4.0',
-                    'cupboard:5.5:-4.5'
+                    'chair_1:-3.0:2.0',
+                    'chair_2:-3.5:-2.5',
+                    'table:2.0:2.5',
+                    'couch:3.5:0'
                 ]},
             ]
         ),
