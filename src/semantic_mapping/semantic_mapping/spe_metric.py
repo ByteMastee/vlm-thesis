@@ -18,13 +18,13 @@ from scipy.optimize import linear_sum_assignment
 # USER INPUTS — change these for every run
 # =============================================================================
 
-GT_STRING     = "chair_1:-3.0:2.0,chair_2:-3.5:-2.5,table:2.0:2.5,couch:3.5:0.0"
+GT_STRING     = "reception_table:-5.0:5.5,reception_chair:-5.0:6.6,dustbin:0.0:6.0,chair_1:4.5:5.5,chair_2:5.7:5.5,chair_3:6.9:5.5,chair_4:8.1:5.5,potted_plant:6.0:-4.5,office_desk:7.5:2.0,office_chair:7.5:0.9,bookshelf:9.7:0.5,filing_cabinet:4.2:-1.8,operation_table:-6.5:0.5,instrument_trolley:-5.5:-0.5,medical_monitor:-7.8:1.5,iv_stand:-7.5:-0.5"
 
-YOLO_PATH     = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/PreFinal/E1_Path1_1/E1_Path1_1_object_stack.json"
-YOLO_VLM_PATH = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/PreFinal/E1_Path1_1/E1_Path1_1_vlm_object_stack.json"
-VIT_VLM_PATH  = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/ViT/Env1_Path1/Env1_Path1_vit_vlm_object_stack.json"
+YOLO_PATH     = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/PreFinal/E5_Path2_1/E5_Path2_1_object_stack.json"
+YOLO_VLM_PATH = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/PreFinal/E5_Path2_1/E5_Path2_1_vlm_object_stack.json"
+VIT_VLM_PATH  = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/ViT/Env5_Path2/Env5_Path2_vit_vlm_object_stack.json"
 
-RUN_NAME      = "E1_Path1"   # used in output filename
+RUN_NAME      = "E5_Path2"   # used in output filename
 
 # =============================================================================
 # FIXED — do not change
