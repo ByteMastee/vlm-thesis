@@ -4,8 +4,8 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import os
 
-RUN_NAME = 'VIT_2'
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/RW_PreFinalOutput'
+RUN_NAME = 'VITp2_3'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/RW_FinalOutput'
 OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 
@@ -34,7 +34,7 @@ def generate_launch_description():
             'dbscan_eps':               0.8,
             'dbscan_min_samples':       4,
             'ray_length':               8.0,
-            'process_delay':            150.0,
+            'process_delay':            100.0,
             'env_frame_interval':       5,
             'sam2_checkpoint':          '/root/sam2_checkpoints/sam2.1_hiera_small.pt',
             'sam2_model_cfg':           'configs/sam2.1/sam2.1_hiera_s.yaml',

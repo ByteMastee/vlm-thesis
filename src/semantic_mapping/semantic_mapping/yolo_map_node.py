@@ -196,40 +196,62 @@ class YoloMapNode:
     # --- Private helpers ---
 
     def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw):
-        x_cam       = (px_cx - self.cx) / self.fx
-        y_cam       = (px_cy - self.cy) / self.fy
-        z_cam       = 1.0
+        # --- Unproject pixel to optical ray ---
+        x_cam = (px_cx - self.cx) / self.fx
+        y_cam = (px_cy - self.cy) / self.fy
+        z_cam = 1.0
         ray_optical = np.array([x_cam, y_cam, z_cam])
         ray_optical = ray_optical / np.linalg.norm(ray_optical)
 
-        if z_cam <= 0:
+        # --- Camera mount parameters from URDF ---
+        # joint_fisheye_front: xyz="0.07 0 1.845", rpy="0 0.628 -0.0255"
+        cam_pitch    = 0.628   # radians, pitched down
+        cam_yaw      = -0.0255 # radians, slight yaw
+        cam_x_offset = 0.07    # metres forward from base
+
+        # --- Optical frame to camera body frame ---
+        # Optical: x-right, y-down, z-forward
+        # Camera body: x-forward, y-left, z-up
+        ray_cam_x =  ray_optical[2]  # z_optical -> x_cam (forward)
+        ray_cam_y =  ray_optical[0]  # x_optical -> -y_cam
+        ray_cam_z = -ray_optical[1]  # y_optical -> -z_cam (up)
+
+        # --- Apply camera pitch rotation (rotation around y-axis) ---
+        cos_p = np.cos(cam_pitch)
+        sin_p = np.sin(cam_pitch)
+        ray_body_x = cos_p * ray_cam_x + sin_p * ray_cam_z
+        ray_body_y = ray_cam_y
+        # ray_body_z not needed — projecting to horizontal plane
+
+        # --- Apply camera yaw rotation (rotation around z-axis) ---
+        cos_cy = np.cos(cam_yaw)
+        sin_cy = np.sin(cam_yaw)
+        ray_body_x2 = cos_cy * ray_body_x - sin_cy * ray_body_y
+        ray_body_y2 = sin_cy * ray_body_x + cos_cy * ray_body_y
+
+        # --- Project onto horizontal plane and normalize ---
+        horiz_norm = np.sqrt(ray_body_x2**2 + ray_body_y2**2)
+        if horiz_norm < 1e-6:
             return None, None
+        ray_body_x2 = ray_body_x2 / horiz_norm
+        ray_body_y2 = ray_body_y2 / horiz_norm
 
-        try:
-            tf_stamped = self.tf_buffer.lookup_transform(
-                'odom',
-                'fisheye_front_optical_frame',
-                rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.5)
-            )
-        except Exception as e:
-            self.logger.warn(f'TF lookup failed: {e}')
-            return None, None
+        # --- Apply robot yaw to get odom frame ray ---
+        cos_yaw = np.cos(yaw)
+        sin_yaw = np.sin(yaw)
+        ray_odom_x = cos_yaw * ray_body_x2 - sin_yaw * ray_body_y2
+        ray_odom_y = sin_yaw * ray_body_x2 + cos_yaw * ray_body_y2
 
-        R = self._quat_to_rotation_matrix(tf_stamped.transform.rotation)
-        t = np.array([
-            tf_stamped.transform.translation.x,
-            tf_stamped.transform.translation.y,
-            tf_stamped.transform.translation.z
-        ])
-
-        ray_odom_3d = R @ ray_optical
-        ray_2d      = ray_odom_3d[:2]
-        norm        = np.linalg.norm(ray_2d)
+        ray_2d = np.array([ray_odom_x, ray_odom_y])
+        norm   = np.linalg.norm(ray_2d)
         if norm < 1e-6:
             return None, None
-        ray_2d    = ray_2d / norm
-        origin_2d = t[:2]
+        ray_2d = ray_2d / norm
+
+        # --- Camera origin in odom frame (include forward offset) ---
+        origin_x  = robot_x + cos_yaw * cam_x_offset
+        origin_y  = robot_y + sin_yaw * cam_x_offset
+        origin_2d = np.array([origin_x, origin_y])
 
         return ray_2d, origin_2d
 
@@ -249,6 +271,11 @@ class YoloMapNode:
         t2 = (A[0, 0] * b[1] - A[1, 0] * b[0]) / denom
 
         if t1 < 0 or t2 < 0:
+            return None
+
+        # --- Reject intersections too far from both origins ---
+        MAX_DIST = 8.0  # metres — matches ray_length parameter
+        if t1 > MAX_DIST or t2 > MAX_DIST:
             return None
 
         p1       = o1 + t1 * d1

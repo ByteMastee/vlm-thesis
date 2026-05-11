@@ -114,7 +114,7 @@ class RosBridgeNode(Node):
         self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
         self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',        10)
         self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
-
+    
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
         self.create_subscription(Image,      image_topic,    self.image_cb,    10)
         self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)

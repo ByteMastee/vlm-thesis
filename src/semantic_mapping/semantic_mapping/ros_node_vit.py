@@ -27,7 +27,7 @@ class RosBridgeNodeVit(Node):
         super().__init__('ros_node_vit')
 
         self.declare_parameter('run_name',           'run_01')
-        self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_raw')
+        self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_rect')
         self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
         self.declare_parameter('odom_topic',         '/odom')
         self.declare_parameter('frame_skip',         12)
