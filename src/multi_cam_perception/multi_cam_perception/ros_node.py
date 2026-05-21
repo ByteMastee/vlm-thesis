@@ -41,6 +41,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('ray_length',         8.0)
         self.declare_parameter('process_delay',      95.0)
         self.declare_parameter('env_frame_interval', 20)
+        self.declare_parameter('min_candidates', 3)
         self.declare_parameter('ground_truth',       ['chair_1:-3.0:2.0', 'chair_2:-3.5:-2.5', 'couch:3.5:0.0', 'table:2.0:2.5'])
 
         self.run_name = self.get_parameter('run_name').value
@@ -60,6 +61,7 @@ class RosBridgeNode(Node):
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
         self.env_frame_interval = self.get_parameter('env_frame_interval').value
+        self.min_candidates = self.get_parameter('min_candidates').value
 
         # --- Output dir: use parameter if provided, else build from run_name ---
         output_dir_param = self.get_parameter('output_dir').value
@@ -173,7 +175,8 @@ class RosBridgeNode(Node):
             logger=self.get_logger(),
             tf_buffer=self.tf_buffer,
             env_frame_interval=self.env_frame_interval,
-            run_name=self.run_name
+            run_name=self.run_name,
+            min_candidates=self.min_candidates
         )
 
         self.rviz_publisher = RvizPublisherNode(
@@ -196,9 +199,13 @@ class RosBridgeNode(Node):
         if self.is_calibrated_left:
             return
         self.is_calibrated_left = True
+        self.fx_left = msg.k[0]
+        self.fy_left = msg.k[4]
+        self.cx_left = msg.k[2]
+        self.cy_left = msg.k[5]
         self.get_logger().info(
-            f'Left camera calibrated — fx:{msg.k[0]:.4f} fy:{msg.k[4]:.4f} '
-            f'cx:{msg.k[2]:.4f} cy:{msg.k[5]:.4f}'
+            f'Left camera calibrated — fx:{self.fx_left:.4f} fy:{self.fy_left:.4f} '
+            f'cx:{self.cx_left:.4f} cy:{self.cy_left:.4f}'
         )
 
     def dual_image_cb(self, msg_front, msg_left):
@@ -222,13 +229,20 @@ class RosBridgeNode(Node):
         # Process front camera
         rx, ry, frame_rays, _ = self.yolo_map_node.process_frame(
             msg_front, self.latest_odom,
-            tf_frame='camera_fisheye_front_optical_frame'
+            tf_frame='camera_fisheye_front_optical_frame',
+            fx=self.yolo_map_node.fx,
+            fy=self.yolo_map_node.fy,
+            cx=self.yolo_map_node.cx,
+            cy=self.yolo_map_node.cy,
         )
 
-        # Process left camera — rays feed into same candidate stack
         rx2, ry2, frame_rays_left, _ = self.yolo_map_node.process_frame(
             msg_left, self.latest_odom,
-            tf_frame='camera_fisheye_left_optical_frame'
+            tf_frame='camera_fisheye_left_optical_frame',
+            fx=self.fx_left,
+            fy=self.fy_left,
+            cx=self.cx_left,
+            cy=self.cy_left,
         )
 
         frame_elapsed = time.time() - frame_start

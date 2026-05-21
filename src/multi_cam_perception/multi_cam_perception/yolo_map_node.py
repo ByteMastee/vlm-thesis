@@ -31,7 +31,8 @@ class YoloMapNode:
         logger,
         tf_buffer,
         run_name,
-        env_frame_interval=20
+        env_frame_interval=20,
+        min_candidates=3
     ):
         self.confidence         = confidence
         self.fx                 = fx
@@ -47,7 +48,7 @@ class YoloMapNode:
         self.tf_buffer          = tf_buffer
         self.run_name           = run_name
         self.env_frame_interval = env_frame_interval
-
+        self.min_candidates     = min_candidates
         self.ray_stack         = {}
         self.candidate_stack   = {}
         self.object_stack      = {}
@@ -69,7 +70,7 @@ class YoloMapNode:
         self.model = YOLO(model_path)
         self.logger.info('YOLO model loaded.')
 
-    def process_frame(self, image_msg, odom_msg, tf_frame='camera_fisheye_front_optical_frame'):
+    def process_frame(self, image_msg, odom_msg, tf_frame='camera_fisheye_front_optical_frame', fx=None, fy=None, cx=None, cy=None):
         """
         Returns:
             rx, ry           — robot position (2D)
@@ -81,6 +82,11 @@ class YoloMapNode:
             return None, None, None, None
 
         rx, ry, yaw = self._extract_odom(odom_msg)
+        fx = fx if fx is not None else self.fx
+        fy = fy if fy is not None else self.fy
+        cx = cx if cx is not None else self.cx
+        cy = cy if cy is not None else self.cy
+
         self.robot_x.append(rx)
         self.robot_y.append(ry)
 
@@ -131,7 +137,8 @@ class YoloMapNode:
                 ray_2d, origin_2d = self._pixel_to_ray_2d(
                     px_cx, px_cy,
                     rx, ry, yaw, 
-                    tf_frame,
+                    tf_frame, 
+                    fx, fy, cx, cy, 
                 )
 
                 if ray_2d is None:
@@ -196,9 +203,9 @@ class YoloMapNode:
 
     # --- Private helpers ---
 
-    def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw, tf_frame):
-        x_cam       = (px_cx - self.cx) / self.fx
-        y_cam       = (px_cy - self.cy) / self.fy
+    def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw, tf_frame, fx, fy, cx, cy):
+        x_cam       = (px_cx - cx) / fx
+        y_cam       = (px_cy - cy) / fy
         z_cam       = 1.0
         ray_optical = np.array([x_cam, y_cam, z_cam])
         ray_optical = ray_optical / np.linalg.norm(ray_optical)
@@ -297,6 +304,9 @@ class YoloMapNode:
             return object_entries
 
         pts = np.array(candidates)
+
+        if len(pts) < self.min_candidates:
+            return object_entries
 
         if len(pts) < self.dbscan_min_samples:
             final_x = float(np.median(pts[:, 0]))

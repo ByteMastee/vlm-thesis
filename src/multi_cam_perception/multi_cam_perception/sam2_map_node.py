@@ -39,7 +39,8 @@ class SAM2MapNode:
         stability_score_thresh=0.92,
         min_mask_region_area=3000,
         max_mask_area_fraction=0.10,
-        max_regions=6
+        max_regions=6,
+        min_candidates=3
     ):
         self.fx                     = fx
         self.fy                     = fy
@@ -57,7 +58,7 @@ class SAM2MapNode:
         self.max_mask_area_fraction = max_mask_area_fraction
         self.max_regions            = max_regions
         self.min_mask_region_area   = min_mask_region_area
-
+        self.min_candidates         = min_candidates
         self.ray_stack         = {}
         self.candidate_stack   = {}
         self.object_stack      = {}
@@ -158,12 +159,17 @@ class SAM2MapNode:
     #  Main frame processing                                               #
     # ------------------------------------------------------------------ #
 
-    def process_frame(self, image_msg, odom_msg, tf_frame='camera_fisheye_front_optical_frame'):
+    def process_frame(self, image_msg, odom_msg, tf_frame='camera_fisheye_front_optical_frame', fx=None, fy=None, cx=None, cy=None):
         img = self._decode_image(image_msg)
         if img is None:
             return None, None, None, None
 
         rx, ry, yaw = self._extract_odom(odom_msg)
+        fx = fx if fx is not None else self.fx
+        fy = fy if fy is not None else self.fy
+        cx = cx if cx is not None else self.cx
+        cy = cy if cy is not None else self.cy
+
         self.robot_x.append(rx)
         self.robot_y.append(ry)
 
@@ -240,7 +246,7 @@ class SAM2MapNode:
                 cv2.imwrite(os.path.join(self.det_objects_dir, crop_filename), obj_crop)
 
             # Ray casting
-            ray_2d, origin_2d = self._pixel_to_ray_2d(px_cx, px_cy, rx, ry, yaw, tf_frame)
+            ray_2d, origin_2d = self._pixel_to_ray_2d(px_cx, px_cy, rx, ry, yaw, tf_frame, fx, fy, cx, cy)
             if ray_2d is None:
                 continue
 
@@ -332,9 +338,9 @@ class SAM2MapNode:
     #  Private helpers                                                     #
     # ------------------------------------------------------------------ #
 
-    def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw, tf_frame):
-        x_cam       = (px_cx - self.cx) / self.fx
-        y_cam       = (px_cy - self.cy) / self.fy
+    def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw, tf_frame, fx, fy, cx, cy):
+        x_cam       = (px_cx - cx) / fx
+        y_cam       = (px_cy - cy) / fy
         z_cam       = 1.0
         ray_optical = np.array([x_cam, y_cam, z_cam])
         ray_optical = ray_optical / np.linalg.norm(ray_optical)
@@ -428,6 +434,9 @@ class SAM2MapNode:
             return object_entries
 
         pts = np.array(candidates)
+
+        if len(pts) < self.min_candidates:
+            return object_entries
 
         if len(pts) < self.dbscan_min_samples:
             final_x = float(np.median(pts[:, 0]))

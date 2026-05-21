@@ -49,6 +49,7 @@ class RosBridgeNodeVit(Node):
         self.declare_parameter('min_mask_region_area',   1500)
         self.declare_parameter('max_mask_area_fraction', 0.20)
         self.declare_parameter('max_regions',            12)
+        self.declare_parameter('min_candidates',        3)
 
         self.run_name = self.get_parameter('run_name').value
 
@@ -57,6 +58,7 @@ class RosBridgeNodeVit(Node):
         image_topic_left    = self.get_parameter('image_topic_left').value
         cam_info_topic_left = self.get_parameter('cam_info_topic_left').value
         odom_topic     = self.get_parameter('odom_topic').value
+        self.min_candidates = self.get_parameter('min_candidates').value
 
         self.frame_skip         = self.get_parameter('frame_skip').value
         self.min_angle_deg      = self.get_parameter('min_angle_deg').value
@@ -172,7 +174,8 @@ class RosBridgeNodeVit(Node):
             stability_score_thresh=self.stability_score_thresh,
             min_mask_region_area=self.min_mask_region_area,
             max_mask_area_fraction=self.max_mask_area_fraction,
-            max_regions=self.max_regions
+            max_regions=self.max_regions,
+            min_candidates=self.min_candidates
         )
 
         self.rviz_publisher = RvizPublisherNode(logger=self.get_logger())
@@ -191,9 +194,13 @@ class RosBridgeNodeVit(Node):
         if self.is_calibrated_left:
             return
         self.is_calibrated_left = True
+        self.fx_left = msg.k[0]
+        self.fy_left = msg.k[4]
+        self.cx_left = msg.k[2]
+        self.cy_left = msg.k[5]
         self.get_logger().info(
-            f'Left camera calibrated — fx:{msg.k[0]:.4f} fy:{msg.k[4]:.4f} '
-            f'cx:{msg.k[2]:.4f} cy:{msg.k[5]:.4f}'
+            f'Left camera calibrated — fx:{self.fx_left:.4f} fy:{self.fy_left:.4f} '
+            f'cx:{self.cx_left:.4f} cy:{self.cy_left:.4f}'
         )
 
     def dual_image_cb(self, msg_front, msg_left):
@@ -217,13 +224,20 @@ class RosBridgeNodeVit(Node):
         # Process front camera
         rx, ry, frame_rays, _ = self.sam2_map_node.process_frame(
             msg_front, self.latest_odom,
-            tf_frame='camera_fisheye_front_optical_frame'
+            tf_frame='camera_fisheye_front_optical_frame',
+            fx=self.sam2_map_node.fx,
+            fy=self.sam2_map_node.fy,
+            cx=self.sam2_map_node.cx,
+            cy=self.sam2_map_node.cy,
         )
 
-        # Process left camera — rays feed into same candidate stack
         rx2, ry2, frame_rays_left, _ = self.sam2_map_node.process_frame(
             msg_left, self.latest_odom,
-            tf_frame='camera_fisheye_left_optical_frame'
+            tf_frame='camera_fisheye_left_optical_frame',
+            fx=self.fx_left,
+            fy=self.fy_left,
+            cx=self.cx_left,
+            cy=self.cy_left,
         )
 
         frame_elapsed = time.time() - frame_start
