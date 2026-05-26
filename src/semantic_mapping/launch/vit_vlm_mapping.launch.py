@@ -4,8 +4,8 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import os
 
-RUN_NAME = 'VITp2_3'
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/RW_FinalOutput'
+RUN_NAME = 'VITp1_1'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Thesis_RWvit'
 OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 
