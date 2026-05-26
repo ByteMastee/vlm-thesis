@@ -7,7 +7,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     run_name_arg = DeclareLaunchArgument(
-        'run_name', default_value='Env5_Path2',
+        'run_name', default_value='Env1_Path2',
         description='Run identifier for output files'
     )
     process_delay_arg = DeclareLaunchArgument(
@@ -15,7 +15,7 @@ def generate_launch_description():
         description='Seconds to wait before triggering final processing'
     )
     output_dir_arg = DeclareLaunchArgument(
-        'output_dir', default_value='/root/UVC_ws/vf_robot_model_ros2/Final_Output/ViT/Env5_Path2',
+        'output_dir', default_value='/root/UVC_ws/vf_robot_model_ros2/Final_Output/Thesis_SIMViT',
         description='Override output directory (leave empty to auto-build from run_name)'
     )
 
@@ -50,22 +50,10 @@ def generate_launch_description():
             'max_mask_area_fraction':   0.10,
             'max_regions':              8,
             'ground_truth':             [
-                'reception_table:-5.0:5.5',
-                'reception_chair:-5.0:6.6',
-                'dustbin:0.0:6.0',
-                'chair_1:4.5:5.5',
-                'chair_2:5.7:5.5',
-                'chair_3:6.9:5.5',
-                'chair_4:8.1:5.5',
-                'potted_plant:6.0:-4.5',
-                'office_desk:7.5:2.0',
-                'office_chair:7.5:0.9',
-                'bookshelf:9.7:0.5',
-                'filing_cabinet:4.2:-1.8',
-                'operation_table:-6.5:0.5',
-                'instrument_trolley:-5.5:-0.5',
-                'medical_monitor:-7.8:1.5',
-                'iv_stand:-7.5:-0.5'
+                'chair_1:-3.0:2.0',
+                'chair_2:-3.5:-2.5',
+                'table:2.0:2.5',
+                'couch:3.5:0'
             ],
         }]
     )

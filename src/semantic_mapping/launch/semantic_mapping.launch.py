@@ -3,9 +3,9 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'E1_Path2'
+RUN_NAME = 'E1_Path1'
 
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Final'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/New'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 

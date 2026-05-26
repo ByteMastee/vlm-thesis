@@ -1,9 +1,9 @@
 """
 Aggregated Statistical Analysis Plot for all SIM Environments
 ===============================================================
-Single combined figure with 2 subplots:
-1. Mean +- StD of SPE — grouped by pipeline, 5 environment bars per group
-2. Mean +- StD of F1-Score — grouped by pipeline, 5 environment bars per group
+Saves two separate PNG files:
+1. SIM_aggregated_SPE.png     — Mean +- StD of SPE
+2. SIM_aggregated_F1.png      — Mean +- StD of F1-Score
 """
 
 import os
@@ -27,8 +27,9 @@ STAT_FILES = {
 # FIXED — do not change
 # =============================================================================
 
-OUTPUT_DIR  = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/FinalStat_Analysis"
-OUTPUT_FILE = "SIM_aggregated_stat_analysisV2.png"
+OUTPUT_DIR    = "/root/UVC_ws/vf_robot_model_ros2/Final_Output/Thesis_Figures"
+OUTPUT_SPE    = "SIM_aggregated_SPE.png"
+OUTPUT_F1     = "SIM_aggregated_F1.png"
 
 PIPELINES = ['YOLO', 'YOLO_VLM', 'VIT_VLM']
 
@@ -58,11 +59,6 @@ def load_stats(stat_files):
 
 
 def extract_values(data, metric_mean, metric_std):
-    """
-    Returns:
-        means: dict {pipeline: {env: value}}
-        stds:  dict {pipeline: {env: value}}
-    """
     envs  = list(data.keys())
     means = {p: {} for p in PIPELINES}
     stds  = {p: {} for p in PIPELINES}
@@ -80,49 +76,63 @@ def extract_values(data, metric_mean, metric_std):
     return means, stds
 
 
-def plot_grouped_bars(ax, means, stds, envs, title, ylabel):
+def plot_single(means, stds, envs, title, ylabel, output_path, arrow):
     n_pipelines = len(PIPELINES)
     n_envs      = len(envs)
-    bar_width   = 0.15
+    bar_width   = 0.14
     x           = np.arange(n_pipelines)
 
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle(f'{title}  {arrow}', fontsize=14, fontweight='bold')
+
     for j, env in enumerate(envs):
-        offset     = (j - (n_envs - 1) / 2) * bar_width
-        env_means  = [means[p][env] for p in PIPELINES]
-        env_stds   = [stds[p][env]  for p in PIPELINES]
+        offset    = (j - (n_envs - 1) / 2) * bar_width
+        env_means = [means[p][env] for p in PIPELINES]
+        env_stds  = [stds[p][env]  for p in PIPELINES]
 
         bars = ax.bar(
             x + offset,
             env_means,
             width=bar_width,
             yerr=env_stds,
-            capsize=3,
+            capsize=4,
             color=ENV_COLORS[env],
             edgecolor='black',
-            linewidth=0.6,
+            linewidth=0.7,
             label=env
         )
 
-        # Value labels on bars
-        for bar, mean in zip(bars, env_means):
+        # Value labels above bars for better visibility
+        for bar, mean, std in zip(bars, env_means, env_stds):
             if mean > 0:
                 ax.text(
                     bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() * 0.5,
+                    bar.get_height() + std + (max(
+                        [means[p][e] for p in PIPELINES for e in envs]
+                    ) * 0.01),
                     f'{mean:.2f}',
-                    ha='center', va='center',
-                    fontsize=6.5, color='white', fontweight='bold',
+                    ha='center', va='bottom',
+                    fontsize=7.5, color='black', fontweight='bold',
                     rotation=90
                 )
 
-    ax.set_title(title, fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_xlabel('Pipeline', fontsize=11)
     ax.set_xticks(x)
-    ax.set_xticklabels([PIPELINE_LABELS[p] for p in PIPELINES], fontsize=10)
-    ax.set_xlabel('Pipeline', fontsize=10)
+    ax.set_xticklabels([PIPELINE_LABELS[p] for p in PIPELINES], fontsize=11)
     ax.yaxis.grid(True, linestyle='--', alpha=0.7)
     ax.set_axisbelow(True)
-    ax.legend(title='Environment', fontsize=9, title_fontsize=9)
+    ax.legend(title='Environment', fontsize=9, title_fontsize=9,
+              loc='upper right')
+
+    # Add extra headroom for labels
+    current_ylim = ax.get_ylim()
+    ax.set_ylim(0, current_ylim[1] * 1.25)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f'Saved: {output_path}')
 
 
 def main():
@@ -134,24 +144,21 @@ def main():
     spe_means, spe_stds = extract_values(data, 'SPE_mean', 'SPE_std')
     f1_means,  f1_stds  = extract_values(data, 'F1_mean',  'F1_std')
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle('Aggregated Statistical Analysis — SIM Environments',
-                 fontsize=14, fontweight='bold')
+    plot_single(
+        spe_means, spe_stds, envs,
+        title='Mean ± StD of SPE',
+        ylabel='SPE (metres)',
+        output_path=os.path.join(OUTPUT_DIR, OUTPUT_SPE),
+        arrow='↓'
+    )
 
-    plot_grouped_bars(ax1, spe_means, spe_stds, envs,
-                      title='Mean ± StD of SPE',
-                      ylabel='SPE (metres)')
-
-    plot_grouped_bars(ax2, f1_means, f1_stds, envs,
-                      title='Mean ± StD of F1-Score',
-                      ylabel='F1-Score')
-
-    plt.tight_layout()
-
-    output_path = os.path.join(OUTPUT_DIR, OUTPUT_FILE)
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f'Aggregated graph saved to: {output_path}')
+    plot_single(
+        f1_means, f1_stds, envs,
+        title='Mean ± StD of F1-Score',
+        ylabel='F1-Score',
+        output_path=os.path.join(OUTPUT_DIR, OUTPUT_F1),
+        arrow='↑'
+    )
 
 
 if __name__ == '__main__':
