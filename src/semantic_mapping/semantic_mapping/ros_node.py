@@ -13,6 +13,7 @@ from visualization_msgs.msg import MarkerArray
 from std_srvs.srv import Trigger
 
 import tf2_ros
+import message_filters
 
 from semantic_mapping.yolo_map_node import YoloMapNode
 from semantic_mapping.rviz_publisher_node import RvizPublisherNode
@@ -24,27 +25,32 @@ class RosBridgeNode(Node):
     def __init__(self):
         super().__init__('ros_node')
 
-        self.declare_parameter('run_name',           'run_01')
-        self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_rect')
-        self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
-        self.declare_parameter('odom_topic',         '/odom')
-        self.declare_parameter('frame_skip',         12)
-        self.declare_parameter('confidence',         0.50)
-        self.declare_parameter('model_path',         '/root/yolo26m.pt')
-        self.declare_parameter('output_dir',         '')
-        self.declare_parameter('min_angle_deg',      8.0)
-        self.declare_parameter('dbscan_eps',         1.0)
-        self.declare_parameter('dbscan_min_samples', 3)
-        self.declare_parameter('ray_length',         8.0)
-        self.declare_parameter('process_delay',      95.0)
-        self.declare_parameter('env_frame_interval', 20)
-        self.declare_parameter('ground_truth',       [''])
+        self.declare_parameter('run_name',             'run_01')
+        self.declare_parameter('image_topic',          '/fisheye_front/fisheye_front/image_rect')
+        self.declare_parameter('image_topic_left',     '/fisheye_left/fisheye_left/image_rect')
+        self.declare_parameter('cam_info_topic',       '/fisheye_front/fisheye_front/camera_info')
+        self.declare_parameter('cam_info_topic_left',  '/fisheye_left/fisheye_left/camera_info')
+        self.declare_parameter('odom_topic',           '/odom')
+        self.declare_parameter('frame_skip',           12)
+        self.declare_parameter('confidence',           0.50)
+        self.declare_parameter('model_path',           '/root/yolo26m.pt')
+        self.declare_parameter('output_dir',           '')
+        self.declare_parameter('min_angle_deg',        15.0)
+        self.declare_parameter('dbscan_eps',           0.7)
+        self.declare_parameter('dbscan_min_samples',   3)
+        self.declare_parameter('ray_length',           8.0)
+        self.declare_parameter('process_delay',        95.0)
+        self.declare_parameter('env_frame_interval',   20)
+        self.declare_parameter('min_candidates',       3)
+        self.declare_parameter('ground_truth',         [''])
 
         self.run_name = self.get_parameter('run_name').value
 
-        image_topic    = self.get_parameter('image_topic').value
-        cam_info_topic = self.get_parameter('cam_info_topic').value
-        odom_topic     = self.get_parameter('odom_topic').value
+        image_topic          = self.get_parameter('image_topic').value
+        image_topic_left     = self.get_parameter('image_topic_left').value
+        cam_info_topic       = self.get_parameter('cam_info_topic').value
+        cam_info_topic_left  = self.get_parameter('cam_info_topic_left').value
+        odom_topic           = self.get_parameter('odom_topic').value
 
         self.frame_skip         = self.get_parameter('frame_skip').value
         self.confidence         = self.get_parameter('confidence').value
@@ -55,6 +61,7 @@ class RosBridgeNode(Node):
         self.ray_length         = self.get_parameter('ray_length').value
         process_delay           = self.get_parameter('process_delay').value
         self.env_frame_interval = self.get_parameter('env_frame_interval').value
+        self.min_candidates     = self.get_parameter('min_candidates').value
 
         output_dir_param = self.get_parameter('output_dir').value
         if output_dir_param:
@@ -62,7 +69,6 @@ class RosBridgeNode(Node):
         else:
             self.output_dir = os.path.join(BASE_OUTPUT_DIR, self.run_name)
 
-        # --- Ground truth: optional ---
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
         if gt_raw and gt_raw != ['']:
@@ -76,7 +82,6 @@ class RosBridgeNode(Node):
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # --- Fix /tf_static QoS mismatch from bag ---
         _static_qos = QoSProfile(
             depth=100,
             durability=DurabilityPolicy.VOLATILE,
@@ -84,14 +89,14 @@ class RosBridgeNode(Node):
             history=HistoryPolicy.KEEP_LAST
         )
         self.create_subscription(
-            TFMessage,
-            '/tf_static',
-            self._tf_static_cb,
-            _static_qos
+            TFMessage, '/tf_static', self._tf_static_cb, _static_qos
         )
 
         self.latest_odom         = None
-        self.cam_info            = None
+        self.cam_info_front      = None
+        self.cam_info_left       = None
+        self.front_calibrated    = False
+        self.left_calibrated     = False
         self.is_calibrated       = False
         self.frame_count         = 0
         self.processed_count     = 0
@@ -114,10 +119,23 @@ class RosBridgeNode(Node):
         self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
         self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',        10)
         self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
-    
-        self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
-        self.create_subscription(Image,      image_topic,    self.image_cb,    10)
-        self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)
+
+        # --- CameraInfo subscriptions ---
+        self.create_subscription(CameraInfo, cam_info_topic,      self.cam_info_cb_front, 10)
+        self.create_subscription(CameraInfo, cam_info_topic_left,  self.cam_info_cb_left,  10)
+
+        # --- Odom subscription ---
+        self.create_subscription(Odometry, odom_topic, self.odom_cb, 10)
+
+        # --- Synchronized front + left image subscription ---
+        self.sub_front = message_filters.Subscriber(self, Image, image_topic)
+        self.sub_left  = message_filters.Subscriber(self, Image, image_topic_left)
+        self.sync = message_filters.ApproximateTimeSynchronizer(
+            [self.sub_front, self.sub_left],
+            queue_size=10,
+            slop=0.05
+        )
+        self.sync.registerCallback(self.image_sync_cb)
 
         self.vlm_client = self.create_client(Trigger, 'run_vlm_pipeline')
         self.create_service(Trigger, 'vlm_pipeline_done', self._vlm_done_cb)
@@ -136,26 +154,51 @@ class RosBridgeNode(Node):
             transform.header.stamp.nanosec = 0
             self.tf_buffer.set_transform_static(transform, 'default_authority')
 
-    def cam_info_cb(self, msg):
+    def cam_info_cb_front(self, msg):
+        if self.front_calibrated:
+            return
+        self.cam_info_front   = msg
+        self.front_calibrated = True
+        self.get_logger().info(
+            f'Front camera calibrated — '
+            f'fx:{msg.k[0]:.4f} fy:{msg.k[4]:.4f} cx:{msg.k[2]:.4f} cy:{msg.k[5]:.4f}'
+        )
+        self._try_init_nodes()
+
+    def cam_info_cb_left(self, msg):
+        if self.left_calibrated:
+            return
+        self.cam_info_left   = msg
+        self.left_calibrated = True
+        self.get_logger().info(
+            f'Left camera calibrated — '
+            f'fx:{msg.k[0]:.4f} fy:{msg.k[4]:.4f} cx:{msg.k[2]:.4f} cy:{msg.k[5]:.4f}'
+        )
+        self._try_init_nodes()
+
+    def _try_init_nodes(self):
+        if not (self.front_calibrated and self.left_calibrated):
+            return
         if self.is_calibrated:
             return
 
-        self.cam_info      = msg
         self.is_calibrated = True
 
-        fx = msg.k[0]
-        fy = msg.k[4]
-        cx = msg.k[2]
-        cy = msg.k[5]
+        fx    = self.cam_info_front.k[0]
+        fy    = self.cam_info_front.k[4]
+        cx    = self.cam_info_front.k[2]
+        cy    = self.cam_info_front.k[5]
 
-        self.get_logger().info(
-            f'Camera calibrated — fx:{fx:.4f} fy:{fy:.4f} cx:{cx:.4f} cy:{cy:.4f}'
-        )
+        fx_left = self.cam_info_left.k[0]
+        fy_left = self.cam_info_left.k[4]
+        cx_left = self.cam_info_left.k[2]
+        cy_left = self.cam_info_left.k[5]
 
         self.yolo_map_node = YoloMapNode(
             model_path=self.model_path,
             confidence=self.confidence,
             fx=fx, fy=fy, cx=cx, cy=cy,
+            fx_left=fx_left, fy_left=fy_left, cx_left=cx_left, cy_left=cy_left,
             min_angle_deg=self.min_angle_deg,
             dbscan_eps=self.dbscan_eps,
             dbscan_min_samples=self.dbscan_min_samples,
@@ -163,15 +206,13 @@ class RosBridgeNode(Node):
             ground_truth=self.ground_truth,
             logger=self.get_logger(),
             tf_buffer=self.tf_buffer,
-            env_frame_interval=self.env_frame_interval,
-            run_name=self.run_name
+            run_name=self.run_name,
+            min_candidates=self.min_candidates,
+            env_frame_interval=self.env_frame_interval
         )
 
-        self.rviz_publisher = RvizPublisherNode(
-            logger=self.get_logger()
-        )
+        self.rviz_publisher = RvizPublisherNode(logger=self.get_logger())
 
-        # Publish GT markers only if GT is provided
         if self.ground_truth and not self.gt_published:
             gt_markers = self.rviz_publisher.build_gt_markers(
                 self.ground_truth, self.get_clock()
@@ -185,7 +226,7 @@ class RosBridgeNode(Node):
 
         self.get_logger().info(f'[{self.run_name}] Functional nodes initialized.')
 
-    def image_cb(self, msg):
+    def image_sync_cb(self, msg_front, msg_left):
         self.frame_count += 1
 
         if not self.is_calibrated:
@@ -204,7 +245,7 @@ class RosBridgeNode(Node):
         frame_start = time.time()
 
         rx, ry, frame_rays, frame_candidates = self.yolo_map_node.process_frame(
-            msg, self.latest_odom
+            msg_front, msg_left, self.latest_odom
         )
 
         frame_elapsed = time.time() - frame_start

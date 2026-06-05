@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 
 from ultralytics import YOLO
 
-import tf2_ros
 import rclpy
 
 
@@ -23,6 +22,7 @@ class YoloMapNode:
         model_path,
         confidence,
         fx, fy, cx, cy,
+        fx_left, fy_left, cx_left, cy_left,
         min_angle_deg,
         dbscan_eps,
         dbscan_min_samples,
@@ -31,6 +31,7 @@ class YoloMapNode:
         logger,
         tf_buffer,
         run_name,
+        min_candidates=3,
         env_frame_interval=20
     ):
         self.confidence         = confidence
@@ -38,6 +39,10 @@ class YoloMapNode:
         self.fy                 = fy
         self.cx                 = cx
         self.cy                 = cy
+        self.fx_left            = fx_left
+        self.fy_left            = fy_left
+        self.cx_left            = cx_left
+        self.cy_left            = cy_left
         self.min_angle_deg      = min_angle_deg
         self.dbscan_eps         = dbscan_eps
         self.dbscan_min_samples = dbscan_min_samples
@@ -46,6 +51,7 @@ class YoloMapNode:
         self.logger             = logger
         self.tf_buffer          = tf_buffer
         self.run_name           = run_name
+        self.min_candidates     = min_candidates
         self.env_frame_interval = env_frame_interval
 
         self.ray_stack         = {}
@@ -69,15 +75,20 @@ class YoloMapNode:
         self.model = YOLO(model_path)
         self.logger.info('YOLO model loaded.')
 
-    def process_frame(self, image_msg, odom_msg):
+    def process_frame(self, image_msg, image_msg_left, odom_msg):
         """
+        Process front and left camera frames together.
         Returns:
             rx, ry           — robot position (2D)
             frame_rays       — list of (origin_2d, ray_2d) for this frame
             frame_candidates — list of (x, y) new candidates from this frame
         """
-        img = self._decode_image(image_msg)
-        if img is None:
+        img_front = self._decode_image(image_msg)
+        if img_front is None:
+            return None, None, None, None
+
+        img_left = self._decode_image(image_msg_left)
+        if img_left is None:
             return None, None, None, None
 
         rx, ry, yaw = self._extract_odom(odom_msg)
@@ -86,18 +97,47 @@ class YoloMapNode:
 
         self.processed_frame_count += 1
 
-        # --- Save env frame at regular interval ---
+        # --- Save env frame at regular interval (front camera) ---
         if self.processed_frame_count % self.env_frame_interval == 0:
             env_path = os.path.join(
                 self.env_frames_dir,
                 f'env_f{self.processed_frame_count:05d}.jpg'
             )
-            cv2.imwrite(env_path, img)
-
-        results = self.model(img, conf=self.confidence, verbose=False)
+            cv2.imwrite(env_path, img_front)
 
         frame_rays       = []
         frame_candidates = []
+
+        # --- Process front camera ---
+        self._process_single_camera(
+            img_front, rx, ry, yaw,
+            self.fx, self.fy, self.cx, self.cy,
+            cam_pitch=0.628, cam_yaw=-0.0255,
+            cam_x_offset=0.07, cam_y_offset=0.0,
+            frame_rays=frame_rays,
+            frame_candidates=frame_candidates
+        )
+
+        # --- Process left camera ---
+        self._process_single_camera(
+            img_left, rx, ry, yaw,
+            self.fx_left, self.fy_left, self.cx_left, self.cy_left,
+            cam_pitch=0.628, cam_yaw=1.5708,
+            cam_x_offset=-0.2, cam_y_offset=0.18,
+            frame_rays=frame_rays,
+            frame_candidates=frame_candidates
+        )
+
+        return rx, ry, frame_rays, frame_candidates
+
+    def _process_single_camera(
+        self, img, rx, ry, yaw,
+        fx, fy, cx, cy,
+        cam_pitch, cam_yaw,
+        cam_x_offset, cam_y_offset,
+        frame_rays, frame_candidates
+    ):
+        results = self.model(img, conf=self.confidence, verbose=False)
 
         # --- First pass: save object crops ---
         for result in results:
@@ -129,8 +169,10 @@ class YoloMapNode:
                 px_cy           = (y1 + y2) // 2
 
                 ray_2d, origin_2d = self._pixel_to_ray_2d(
-                    px_cx, px_cy,
-                    rx, ry, yaw,
+                    px_cx, px_cy, rx, ry, yaw,
+                    fx, fy, cx, cy,
+                    cam_pitch, cam_yaw,
+                    cam_x_offset, cam_y_offset
                 )
 
                 if ray_2d is None:
@@ -160,11 +202,15 @@ class YoloMapNode:
 
                 self.ray_stack[label].append((origin_2d, ray_2d))
 
-        return rx, ry, frame_rays, frame_candidates
-
     def get_object_stack(self):
         self.object_stack = {}
         for label, candidates in self.candidate_stack.items():
+            if len(candidates) < self.min_candidates:
+                self.logger.info(
+                    f'[{self.run_name}] Skipping "{label}" — '
+                    f'{len(candidates)} candidates < min_candidates={self.min_candidates}'
+                )
+                continue
             entries = self._cluster_candidates(candidates, label)
             self.object_stack.update(entries)
         return self.object_stack
@@ -195,35 +241,31 @@ class YoloMapNode:
 
     # --- Private helpers ---
 
-    def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw):
+    def _pixel_to_ray_2d(
+        self, px_cx, px_cy, robot_x, robot_y, yaw,
+        fx, fy, cx, cy,
+        cam_pitch, cam_yaw,
+        cam_x_offset, cam_y_offset
+    ):
         # --- Unproject pixel to optical ray ---
-        x_cam = (px_cx - self.cx) / self.fx
-        y_cam = (px_cy - self.cy) / self.fy
+        x_cam = (px_cx - cx) / fx
+        y_cam = (px_cy - cy) / fy
         z_cam = 1.0
         ray_optical = np.array([x_cam, y_cam, z_cam])
         ray_optical = ray_optical / np.linalg.norm(ray_optical)
 
-        # --- Camera mount parameters from URDF ---
-        # joint_fisheye_front: xyz="0.07 0 1.845", rpy="0 0.628 -0.0255"
-        cam_pitch    = 0.628   # radians, pitched down
-        cam_yaw      = -0.0255 # radians, slight yaw
-        cam_x_offset = 0.07    # metres forward from base
-
         # --- Optical frame to camera body frame ---
-        # Optical: x-right, y-down, z-forward
-        # Camera body: x-forward, y-left, z-up
-        ray_cam_x =  ray_optical[2]  # z_optical -> x_cam (forward)
-        ray_cam_y =  ray_optical[0]  # x_optical -> -y_cam
-        ray_cam_z = -ray_optical[1]  # y_optical -> -z_cam (up)
+        ray_cam_x =  ray_optical[2]
+        ray_cam_y = -ray_optical[0]
+        ray_cam_z = -ray_optical[1]
 
-        # --- Apply camera pitch rotation (rotation around y-axis) ---
+        # --- Apply camera pitch (rotation around y-axis) ---
         cos_p = np.cos(cam_pitch)
         sin_p = np.sin(cam_pitch)
         ray_body_x = cos_p * ray_cam_x + sin_p * ray_cam_z
         ray_body_y = ray_cam_y
-        # ray_body_z not needed — projecting to horizontal plane
 
-        # --- Apply camera yaw rotation (rotation around z-axis) ---
+        # --- Apply camera yaw (rotation around z-axis) ---
         cos_cy = np.cos(cam_yaw)
         sin_cy = np.sin(cam_yaw)
         ray_body_x2 = cos_cy * ray_body_x - sin_cy * ray_body_y
@@ -248,9 +290,9 @@ class YoloMapNode:
             return None, None
         ray_2d = ray_2d / norm
 
-        # --- Camera origin in odom frame (include forward offset) ---
-        origin_x  = robot_x + cos_yaw * cam_x_offset
-        origin_y  = robot_y + sin_yaw * cam_x_offset
+        # --- Camera origin in odom frame ---
+        origin_x  = robot_x + cos_yaw * cam_x_offset - sin_yaw * cam_y_offset
+        origin_y  = robot_y + sin_yaw * cam_x_offset + cos_yaw * cam_y_offset
         origin_2d = np.array([origin_x, origin_y])
 
         return ray_2d, origin_2d
@@ -273,8 +315,7 @@ class YoloMapNode:
         if t1 < 0 or t2 < 0:
             return None
 
-        # --- Reject intersections too far from both origins ---
-        MAX_DIST = 8.0  # metres — matches ray_length parameter
+        MAX_DIST = 8.0
         if t1 > MAX_DIST or t2 > MAX_DIST:
             return None
 
@@ -307,14 +348,6 @@ class YoloMapNode:
             1 - 2*(q.y**2 + q.z**2)
         )
         return rx, ry, yaw
-
-    def _quat_to_rotation_matrix(self, q):
-        qx, qy, qz, qw = q.x, q.y, q.z, q.w
-        return np.array([
-            [1 - 2*(qy**2 + qz**2),  2*(qx*qy - qz*qw),  2*(qx*qz + qy*qw)],
-            [2*(qx*qy + qz*qw),  1 - 2*(qx**2 + qz**2),  2*(qy*qz - qx*qw)],
-            [2*(qx*qz - qy*qw),  2*(qy*qz + qx*qw),  1 - 2*(qx**2 + qy**2)]
-        ])
 
     def _cluster_candidates(self, candidates, label):
         object_entries = {}
@@ -388,12 +421,12 @@ class YoloMapNode:
 
         plt.xlabel('X (m)')
         plt.ylabel('Y (m)')
-        
+
         title = f'Semantic Map — {self.run_name}'
         if self.ground_truth:
             title += ' — Detected vs Ground Truth'
         plt.title(title)
-        
+
         legend_handles = [
             plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='red',
                     markersize=10, label='Detected'),
@@ -407,7 +440,6 @@ class YoloMapNode:
             legend_handles.insert(0, plt.Line2D([0], [0], marker='^', color='w',
                                 markerfacecolor='green', markersize=10, label='Ground Truth'))
         plt.legend(handles=legend_handles)
-
 
         plt.grid(True)
         plt.axis('equal')

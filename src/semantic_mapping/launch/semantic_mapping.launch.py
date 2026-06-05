@@ -3,9 +3,9 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'YOLOp1_2'
+RUN_NAME = 'RW_01'
 
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Thesis_RWyolo'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Multi_Cam_RWYolo'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 
@@ -42,20 +42,23 @@ def generate_launch_description():
             name       = 'ros_node',
             output     = 'screen',
             parameters = [
-                {'run_name'          : RUN_NAME},
-                {'image_topic'       : '/fisheye_front/fisheye_front/image_rect'},
-                {'cam_info_topic'    : '/fisheye_front/fisheye_front/camera_info'},
-                {'odom_topic'        : '/odom'},
-                {'frame_skip'        : 10},
-                {'confidence'        : 0.60},
-                {'model_path'        : '/root/yolo26m.pt'},
-                {'output_dir'        : OUTPUT_DIR},
-                {'min_angle_deg'     : 25.0},
-                {'dbscan_eps'        : 0.25},
-                {'dbscan_min_samples': 50},
-                {'ray_length'        : 8.0},
-                {'process_delay'     : 80.0},
-                {'env_frame_interval': 10},
+                {'run_name'             : RUN_NAME},
+                {'image_topic'          : '/fisheye_front/fisheye_front/image_rect'},
+                {'image_topic_left'     : '/fisheye_left/fisheye_left/image_rect'},
+                {'cam_info_topic'       : '/fisheye_front/fisheye_front/camera_info'},
+                {'cam_info_topic_left'  : '/fisheye_left/fisheye_left/camera_info'},
+                {'odom_topic'           : '/odom'},
+                {'frame_skip'           : 10},
+                {'confidence'           : 0.60},
+                {'model_path'           : '/root/yolo26m.pt'},
+                {'output_dir'           : OUTPUT_DIR},
+                {'min_angle_deg'        : 15.0},
+                {'dbscan_eps'           : 0.7},
+                {'dbscan_min_samples'   : 50},
+                {'ray_length'           : 8.0},
+                {'process_delay'        : 80.0},
+                {'env_frame_interval'   : 10},
+                {'min_candidates'       : 3},
             ]
         ),
 
