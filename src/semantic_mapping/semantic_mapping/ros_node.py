@@ -4,8 +4,7 @@ import json
 import threading
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
-from tf2_msgs.msg import TFMessage
+from rclpy.qos import QoSProfile, DurabilityPolicy
 
 from sensor_msgs.msg import Image, CameraInfo
 from nav_msgs.msg import Odometry
@@ -28,7 +27,8 @@ class RosBridgeNode(Node):
         self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_rect')
         self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
         self.declare_parameter('odom_topic',         '/odom')
-        self.declare_parameter('frame_skip',         12)
+        self.declare_parameter('frame_skip',         10)
+        self.declare_parameter('frame_interval_sec', 0.0)
         self.declare_parameter('confidence',         0.50)
         self.declare_parameter('model_path',         '/root/yolo26m.pt')
         self.declare_parameter('output_dir',         '')
@@ -36,7 +36,6 @@ class RosBridgeNode(Node):
         self.declare_parameter('dbscan_eps',         1.0)
         self.declare_parameter('dbscan_min_samples', 3)
         self.declare_parameter('ray_length',         8.0)
-        self.declare_parameter('process_delay',      95.0)
         self.declare_parameter('env_frame_interval', 20)
         self.declare_parameter('ground_truth',       [''])
 
@@ -47,13 +46,13 @@ class RosBridgeNode(Node):
         odom_topic     = self.get_parameter('odom_topic').value
 
         self.frame_skip         = self.get_parameter('frame_skip').value
+        self.frame_interval_sec = self.get_parameter('frame_interval_sec').value
         self.confidence         = self.get_parameter('confidence').value
         self.model_path         = self.get_parameter('model_path').value
         self.min_angle_deg      = self.get_parameter('min_angle_deg').value
         self.dbscan_eps         = self.get_parameter('dbscan_eps').value
         self.dbscan_min_samples = self.get_parameter('dbscan_min_samples').value
         self.ray_length         = self.get_parameter('ray_length').value
-        process_delay           = self.get_parameter('process_delay').value
         self.env_frame_interval = self.get_parameter('env_frame_interval').value
 
         output_dir_param = self.get_parameter('output_dir').value
@@ -62,7 +61,6 @@ class RosBridgeNode(Node):
         else:
             self.output_dir = os.path.join(BASE_OUTPUT_DIR, self.run_name)
 
-        # --- Ground truth: optional ---
         gt_raw = self.get_parameter('ground_truth').value
         self.ground_truth = {}
         if gt_raw and gt_raw != ['']:
@@ -76,20 +74,6 @@ class RosBridgeNode(Node):
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # --- Fix /tf_static QoS mismatch from bag ---
-        _static_qos = QoSProfile(
-            depth=100,
-            durability=DurabilityPolicy.VOLATILE,
-            reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST
-        )
-        self.create_subscription(
-            TFMessage,
-            '/tf_static',
-            self._tf_static_cb,
-            _static_qos
-        )
-
         self.latest_odom         = None
         self.cam_info            = None
         self.is_calibrated       = False
@@ -101,7 +85,7 @@ class RosBridgeNode(Node):
         self.gt_published        = False
         self.cached_marker_array = None
         self.cached_vlm_markers  = None
-        self.last_frame_time     = None
+        self.last_processed_time = 0.0
 
         self.yolo_map_node  = None
         self.rviz_publisher = None
@@ -114,27 +98,25 @@ class RosBridgeNode(Node):
         self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
         self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',        10)
         self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
-    
+
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
         self.create_subscription(Image,      image_topic,    self.image_cb,    10)
         self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)
 
         self.vlm_client = self.create_client(Trigger, 'run_vlm_pipeline')
         self.create_service(Trigger, 'vlm_pipeline_done', self._vlm_done_cb)
+        self.create_service(Trigger, 'finalize_map',      self._finalize_map_cb)
+
         self.create_timer(3.0, self._republish_markers)
-        self.create_timer(process_delay, self.process)
 
         self.get_logger().info(f'ros_node started | RUN_NAME: {self.run_name}')
         self.get_logger().info(f'output_dir: {self.output_dir}')
-        self.get_logger().info(f'process will trigger in {process_delay}s')
         self.get_logger().info(f'ground_truth: {"disabled" if not self.ground_truth else self.ground_truth}')
-        self.get_logger().info('Start bag playback now.')
-
-    def _tf_static_cb(self, msg):
-        for transform in msg.transforms:
-            transform.header.stamp.sec     = 0
-            transform.header.stamp.nanosec = 0
-            self.tf_buffer.set_transform_static(transform, 'default_authority')
+        if self.frame_interval_sec > 0.0:
+            self.get_logger().info(f'Frame mode: time-based — 1 frame per {self.frame_interval_sec}s')
+        else:
+            self.get_logger().info(f'Frame mode: skip-based — 1 frame per {self.frame_skip} frames')
+        self.get_logger().info('Live stream mode — call /finalize_map service to finalize.')
 
     def cam_info_cb(self, msg):
         if self.is_calibrated:
@@ -167,11 +149,8 @@ class RosBridgeNode(Node):
             run_name=self.run_name
         )
 
-        self.rviz_publisher = RvizPublisherNode(
-            logger=self.get_logger()
-        )
+        self.rviz_publisher = RvizPublisherNode(logger=self.get_logger())
 
-        # Publish GT markers only if GT is provided
         if self.ground_truth and not self.gt_published:
             gt_markers = self.rviz_publisher.build_gt_markers(
                 self.ground_truth, self.get_clock()
@@ -194,13 +173,23 @@ class RosBridgeNode(Node):
             return
         if self.yolo_map_node is None:
             return
-        if self.frame_count % self.frame_skip != 0:
+        if self.process_done:
             return
 
-        if self.total_start_time is None:
-            self.total_start_time = time.time()
+        now = time.time()
 
-        self.last_frame_time = time.time()
+        if self.frame_interval_sec > 0.0:
+            if now - self.last_processed_time < self.frame_interval_sec:
+                return
+        else:
+            if self.frame_count % self.frame_skip != 0:
+                return
+
+        self.last_processed_time = now
+
+        if self.total_start_time is None:
+            self.total_start_time = now
+
         frame_start = time.time()
 
         rx, ry, frame_rays, frame_candidates = self.yolo_map_node.process_frame(
@@ -238,22 +227,23 @@ class RosBridgeNode(Node):
     def odom_cb(self, msg):
         self.latest_odom = msg
 
-    def process(self):
+    def _finalize_map_cb(self, request, response):
         if self.process_done:
-            return
-        if self.last_frame_time is None:
-            return
-        if time.time() - self.last_frame_time < 5.0:
-            return
-
-        self.process_done = True
+            response.success = False
+            response.message = 'Map already finalized.'
+            return response
 
         if not self.is_calibrated:
-            self.get_logger().warn(f'[{self.run_name}] Process triggered — camera not calibrated, aborting.')
-            return
+            response.success = False
+            response.message = 'Camera not calibrated yet.'
+            return response
+
         if self.processed_count == 0:
-            self.get_logger().warn(f'[{self.run_name}] Process triggered — no frames processed, aborting.')
-            return
+            response.success = False
+            response.message = 'No frames processed yet.'
+            return response
+
+        self.process_done = True
 
         if self.total_start_time is not None:
             total_elapsed = time.time() - self.total_start_time
@@ -295,6 +285,10 @@ class RosBridgeNode(Node):
         thread = threading.Thread(target=self._call_vlm_service, daemon=True)
         thread.start()
 
+        response.success = True
+        response.message = f'Map finalized — {len(object_stack)} objects detected.'
+        return response
+
     def _call_vlm_service(self):
         if not self.vlm_client.wait_for_service(timeout_sec=10.0):
             self.get_logger().warn(
@@ -332,7 +326,7 @@ class RosBridgeNode(Node):
         vlm_stack_path = os.path.join(self.output_dir, f'{self.run_name}_vlm_object_stack.json')
         if not os.path.exists(vlm_stack_path):
             self.get_logger().error(
-                f'[{self.run_name}] {self.run_name}_vlm_object_stack.json not found — cannot publish VLM markers.'
+                f'[{self.run_name}] {self.run_name}_vlm_object_stack.json not found.'
             )
             response.success = False
             response.message = 'vlm_object_stack.json not found.'
@@ -349,8 +343,7 @@ class RosBridgeNode(Node):
         self.vlm_marker_pub.publish(vlm_markers)
         self.cached_vlm_markers = vlm_markers
         self.get_logger().info(
-            f'[{self.run_name}] VLM markers published to /vlm_semantic_map_markers — '
-            f'{len(vlm_markers.markers)} markers.'
+            f'[{self.run_name}] VLM markers published — {len(vlm_markers.markers)} markers.'
         )
 
         response.success = True
