@@ -12,60 +12,85 @@ class FisheyeRectifyNode(Node):
     def __init__(self):
         super().__init__('fisheye_rectify_node')
 
-        self.bridge = CvBridge()
+        self.bridge   = CvBridge()
+        self.is_ready = False
+        self.map1     = None
+        self.map2     = None
 
-        # Calibration parameters from camera_info (equidistant model)
-        self.K = np.array([
-            [271.7130252551282, 0.0,               320.79340187886527],
-            [0.0,               272.1434051421597, 226.64923232430766],
-            [0.0,               0.0,               1.0]
-        ], dtype=np.float64)
-
-        self.D = np.array([
-            [-0.05268338601520044],
-            [ 0.004889702830369265],
-            [-0.0031745403716575385],
-            [ 0.00015737212611983246]
-        ], dtype=np.float64)
-
-        self.P = np.array([
-            [252.0830841064453, 0.0,               321.147701029975,  0.0],
-            [0.0,               260.4607849121094, 223.13973599103883, 0.0],
-            [0.0,               0.0,               1.0,               0.0]
-        ], dtype=np.float64)
-
-        self.image_size = (640, 480)
-
-        # Precompute undistortion maps
-        self.K_new = self.P[:3, :3]
-        self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
-            self.K,
-            self.D,
-            np.eye(3),
-            self.K_new,
-            self.image_size,
-            cv2.CV_16SC2
+        self.sub_info = self.create_subscription(
+            CameraInfo,
+            '/fisheye_front/camera_info',
+            self.cam_info_cb,
+            10
         )
 
-        self.get_logger().info('Undistortion maps computed.')
-
-        self.sub = self.create_subscription(
+        self.sub_image = self.create_subscription(
             Image,
-            '/fisheye_front/fisheye_front/image_raw',
+            '/fisheye_front/image_raw',
             self.image_callback,
             10
         )
 
         self.pub = self.create_publisher(
             Image,
-            '/fisheye_front/fisheye_front/image_rect',
+            '/fisheye_front/image_rect',
             10
         )
 
+        self.get_logger().info('Waiting for camera_info...')
+
+    def cam_info_cb(self, msg):
+        if self.is_ready:
+            return
+
+        image_size = (msg.width, msg.height)
+
+        K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
+        D = np.array(msg.d, dtype=np.float64).reshape(-1, 1)
+        P = np.array(msg.p, dtype=np.float64).reshape(3, 4)
+        K_new = P[:3, :3]
+
+        distortion_model = msg.distortion_model
+        self.get_logger().info(f'Distortion model: {distortion_model}')
+
+        try:
+            if distortion_model == 'equidistant':
+                self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
+                    K, D, np.eye(3), K_new, image_size, cv2.CV_16SC2
+                )
+            elif distortion_model in ('plumb_bob', 'rational_polynomial'):
+                D_flat = np.array(msg.d, dtype=np.float64)
+                self.map1, self.map2 = cv2.initUndistortRectifyMap(
+                    K, D_flat, np.eye(3), K_new, image_size, cv2.CV_16SC2
+                )
+            else:
+                self.get_logger().warn(
+                    f'Unknown distortion model: {distortion_model} — '
+                    f'attempting equidistant.'
+                )
+                self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
+                    K, D, np.eye(3), K_new, image_size, cv2.CV_16SC2
+                )
+        except Exception as e:
+            self.get_logger().error(f'Failed to compute undistortion maps: {e}')
+            return
+
+        self.is_ready = True
+        self.get_logger().info(
+            f'Camera calibrated — '
+            f'fx:{K[0,0]:.4f} fy:{K[1,1]:.4f} '
+            f'cx:{K[0,2]:.4f} cy:{K[1,2]:.4f} '
+            f'size:{image_size} model:{distortion_model}'
+        )
+        self.get_logger().info('Undistortion maps computed.')
+
     def image_callback(self, msg):
-        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
+        if not self.is_ready:
+            return
+
+        cv_image  = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
         rectified = cv2.remap(cv_image, self.map1, self.map2, cv2.INTER_LINEAR)
-        rect_msg = self.bridge.cv2_to_imgmsg(rectified, encoding='rgb8')
+        rect_msg  = self.bridge.cv2_to_imgmsg(rectified, encoding='rgb8')
         rect_msg.header = msg.header
         self.pub.publish(rect_msg)
 
