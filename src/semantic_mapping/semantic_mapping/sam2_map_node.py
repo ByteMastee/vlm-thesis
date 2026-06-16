@@ -15,9 +15,6 @@ import torch
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-import tf2_ros
-import rclpy
-
 
 class SAM2MapNode:
     def __init__(
@@ -33,6 +30,7 @@ class SAM2MapNode:
         logger,
         tf_buffer,
         run_name,
+        min_candidates=3,
         env_frame_interval=20,
         points_per_side=8,
         pred_iou_thresh=0.90,
@@ -53,6 +51,7 @@ class SAM2MapNode:
         self.logger                 = logger
         self.tf_buffer              = tf_buffer
         self.run_name               = run_name
+        self.min_candidates         = min_candidates
         self.env_frame_interval     = env_frame_interval
         self.max_mask_area_fraction = max_mask_area_fraction
         self.max_regions            = max_regions
@@ -70,21 +69,16 @@ class SAM2MapNode:
         self.total_skipped         = 0
         self.processed_frame_count = 0
 
-        # Cross-frame region tracking
-        # tracked_regions: list of dicts:
-        #   { 'label': str, 'bbox': (x1,y1,x2,y2), 'last_seen': int }
         self.tracked_regions   = []
         self.next_track_id     = 0
-        self.track_iou_thresh  = 0.25   # min IoU to match region to existing track
-        self.track_max_unseen  = 5      # frames before a track is considered lost
+        self.track_iou_thresh  = 0.25
+        self.track_max_unseen  = 5
 
-        # Output folders
         self.det_objects_dir = os.path.join(output_dir, 'detections', 'sam2_objects')
         self.env_frames_dir  = os.path.join(output_dir, 'env_frames')
         os.makedirs(self.det_objects_dir, exist_ok=True)
         os.makedirs(self.env_frames_dir,  exist_ok=True)
 
-        # Load SAM2
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.logger.info(f'[{run_name}] Loading SAM2 model on {device}...')
         sam2_model = build_sam2(model_cfg, checkpoint_path, device=device)
@@ -117,13 +111,8 @@ class SAM2MapNode:
         return inter / (area_a + area_b - inter + 1e-6)
 
     def _match_or_create_track(self, bbox):
-        """
-        Match bbox to an existing tracked region by IoU.
-        Returns the track label string.
-        Creates a new track if no match found.
-        """
-        best_iou   = 0.0
-        best_idx   = -1
+        best_iou = 0.0
+        best_idx = -1
 
         for i, track in enumerate(self.tracked_regions):
             iou = self._bbox_iou(bbox, track['bbox'])
@@ -132,12 +121,10 @@ class SAM2MapNode:
                 best_idx = i
 
         if best_iou >= self.track_iou_thresh:
-            # Update existing track
             self.tracked_regions[best_idx]['bbox']      = bbox
             self.tracked_regions[best_idx]['last_seen'] = self.processed_frame_count
             return self.tracked_regions[best_idx]['label']
         else:
-            # New track
             label = f'obj_{self.next_track_id:03d}'
             self.next_track_id += 1
             self.tracked_regions.append({
@@ -148,7 +135,6 @@ class SAM2MapNode:
             return label
 
     def _prune_lost_tracks(self):
-        """Remove tracks not seen for more than track_max_unseen frames."""
         self.tracked_regions = [
             t for t in self.tracked_regions
             if (self.processed_frame_count - t['last_seen']) <= self.track_max_unseen
@@ -169,7 +155,6 @@ class SAM2MapNode:
 
         self.processed_frame_count += 1
 
-        # Save env frame at regular interval
         if self.processed_frame_count % self.env_frame_interval == 0:
             env_path = os.path.join(
                 self.env_frames_dir,
@@ -177,7 +162,6 @@ class SAM2MapNode:
             )
             cv2.imwrite(env_path, img)
 
-        # SAM2 region proposals
         img_rgb        = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         orig_h, orig_w = img.shape[:2]
         total_px       = orig_h * orig_w
@@ -188,13 +172,11 @@ class SAM2MapNode:
             x, y, w, h = m['bbox']
             area_px     = int(w * h)
 
-            # Area filters
             if area_px / total_px > self.max_mask_area_fraction:
                 continue
             if area_px < self.min_mask_region_area:
                 continue
 
-            # Aspect ratio filter — reject flat wall/floor shaped masks
             aspect = max(w, h) / (min(w, h) + 1e-6)
             if aspect > 4.0:
                 continue
@@ -215,7 +197,6 @@ class SAM2MapNode:
             f'{len(masks)} raw masks -> {len(regions)} after filtering'
         )
 
-        # Prune lost tracks
         self._prune_lost_tracks()
 
         frame_rays       = []
@@ -226,10 +207,8 @@ class SAM2MapNode:
             px_cx = (x1 + x2) // 2
             px_cy = (y1 + y2) // 2
 
-            # Cross-frame tracking — get consistent label for this bbox
             track_label = self._match_or_create_track(region['bbox'])
 
-            # Save crop
             crop_y1       = max(0, y1)
             crop_y2       = min(img.shape[0], y2)
             crop_x1       = max(0, x1)
@@ -239,12 +218,10 @@ class SAM2MapNode:
             if obj_crop.size > 0:
                 cv2.imwrite(os.path.join(self.det_objects_dir, crop_filename), obj_crop)
 
-            # Ray casting
             ray_2d, origin_2d = self._pixel_to_ray_2d(px_cx, px_cy, rx, ry, yaw)
             if ray_2d is None:
                 continue
 
-            # Save ray data per crop for VLM-filtered rebuild
             self.crop_ray_data[crop_filename] = {
                 'origin':    origin_2d.tolist(),
                 'ray':       ray_2d.tolist(),
@@ -277,6 +254,12 @@ class SAM2MapNode:
     def get_object_stack(self):
         self.object_stack = {}
         for label, candidates in self.candidate_stack.items():
+            if len(candidates) < self.min_candidates:
+                self.logger.info(
+                    f'[{self.run_name}] Skipping "{label}" — '
+                    f'{len(candidates)} candidates < min_candidates={self.min_candidates}'
+                )
+                continue
             entries = self._cluster_candidates(candidates, label)
             self.object_stack.update(entries)
         return self.object_stack
@@ -333,40 +316,59 @@ class SAM2MapNode:
     # ------------------------------------------------------------------ #
 
     def _pixel_to_ray_2d(self, px_cx, px_cy, robot_x, robot_y, yaw):
-        x_cam       = (px_cx - self.cx) / self.fx
-        y_cam       = (px_cy - self.cy) / self.fy
-        z_cam       = 1.0
+        x_cam = (px_cx - self.cx) / self.fx
+        y_cam = (px_cy - self.cy) / self.fy
+        z_cam = 1.0
         ray_optical = np.array([x_cam, y_cam, z_cam])
         ray_optical = ray_optical / np.linalg.norm(ray_optical)
 
-        if z_cam <= 0:
+        # Camera mount parameters from URDF
+        # joint_fisheye_front: xyz="0.07 0 1.845", rpy="0 0.628 -0.0255"
+        cam_pitch    = 0.628
+        cam_yaw      = -0.0255
+        cam_x_offset = 0.07
+        cam_y_offset = 0.0
+
+        # Optical frame to camera body frame
+        ray_cam_x =  ray_optical[2]
+        ray_cam_y = -ray_optical[0]
+        ray_cam_z = -ray_optical[1]
+
+        # Apply camera pitch (rotation around y-axis)
+        cos_p = np.cos(cam_pitch)
+        sin_p = np.sin(cam_pitch)
+        ray_body_x = cos_p * ray_cam_x + sin_p * ray_cam_z
+        ray_body_y = ray_cam_y
+
+        # Apply camera yaw (rotation around z-axis)
+        cos_cy = np.cos(cam_yaw)
+        sin_cy = np.sin(cam_yaw)
+        ray_body_x2 = cos_cy * ray_body_x - sin_cy * ray_body_y
+        ray_body_y2 = sin_cy * ray_body_x + cos_cy * ray_body_y
+
+        # Project onto horizontal plane and normalize
+        horiz_norm = np.sqrt(ray_body_x2**2 + ray_body_y2**2)
+        if horiz_norm < 1e-6:
             return None, None
+        ray_body_x2 = ray_body_x2 / horiz_norm
+        ray_body_y2 = ray_body_y2 / horiz_norm
 
-        try:
-            tf_stamped = self.tf_buffer.lookup_transform(
-                'odom',
-                'fisheye_front_optical_frame',
-                rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.5)
-            )
-        except Exception as e:
-            self.logger.warn(f'TF lookup failed: {e}')
-            return None, None
+        # Apply robot yaw to get odom frame ray
+        cos_yaw = np.cos(yaw)
+        sin_yaw = np.sin(yaw)
+        ray_odom_x = cos_yaw * ray_body_x2 - sin_yaw * ray_body_y2
+        ray_odom_y = sin_yaw * ray_body_x2 + cos_yaw * ray_body_y2
 
-        R = self._quat_to_rotation_matrix(tf_stamped.transform.rotation)
-        t = np.array([
-            tf_stamped.transform.translation.x,
-            tf_stamped.transform.translation.y,
-            tf_stamped.transform.translation.z
-        ])
-
-        ray_odom_3d = R @ ray_optical
-        ray_2d      = ray_odom_3d[:2]
-        norm        = np.linalg.norm(ray_2d)
+        ray_2d = np.array([ray_odom_x, ray_odom_y])
+        norm   = np.linalg.norm(ray_2d)
         if norm < 1e-6:
             return None, None
-        ray_2d    = ray_2d / norm
-        origin_2d = t[:2]
+        ray_2d = ray_2d / norm
+
+        # Camera origin in odom frame
+        origin_x  = robot_x + cos_yaw * cam_x_offset - sin_yaw * cam_y_offset
+        origin_y  = robot_y + sin_yaw * cam_x_offset + cos_yaw * cam_y_offset
+        origin_2d = np.array([origin_x, origin_y])
 
         return ray_2d, origin_2d
 
@@ -388,7 +390,6 @@ class SAM2MapNode:
         p2       = o2 + t2 * d2
         midpoint = (p1 + p2) / 2.0
 
-        # Reject if intersection point is too far from either ray origin
         MAX_OBJECT_DIST = 5.0
         if np.linalg.norm(midpoint - o1) > MAX_OBJECT_DIST:
             return None
