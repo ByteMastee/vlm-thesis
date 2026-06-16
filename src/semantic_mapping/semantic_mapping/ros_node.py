@@ -7,7 +7,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 
 from sensor_msgs.msg import Image, CameraInfo
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from visualization_msgs.msg import MarkerArray
 from std_srvs.srv import Trigger
 
@@ -26,7 +26,7 @@ class RosBridgeNode(Node):
         self.declare_parameter('run_name',           'run_01')
         self.declare_parameter('image_topic',        '/fisheye_front/fisheye_front/image_rect')
         self.declare_parameter('cam_info_topic',     '/fisheye_front/fisheye_front/camera_info')
-        self.declare_parameter('odom_topic',         '/odom')
+        self.declare_parameter('odom_topic',         '/localization_pose')
         self.declare_parameter('frame_skip',         10)
         self.declare_parameter('frame_interval_sec', 0.0)
         self.declare_parameter('confidence',         0.50)
@@ -101,7 +101,8 @@ class RosBridgeNode(Node):
 
         self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
         self.create_subscription(Image,      image_topic,    self.image_cb,    10)
-        self.create_subscription(Odometry,   odom_topic,     self.odom_cb,     10)
+        self.create_subscription(PoseWithCovarianceStamped,   odom_topic,     self.odom_cb,     10)
+        
 
         self.vlm_client = self.create_client(Trigger, 'run_vlm_pipeline')
         self.create_service(Trigger, 'vlm_pipeline_done', self._vlm_done_cb)

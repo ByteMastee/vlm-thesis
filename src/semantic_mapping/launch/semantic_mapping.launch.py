@@ -2,7 +2,7 @@ import os
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
-RUN_NAME        = 'LS_02'
+RUN_NAME        = 'LS_05'
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/LiveStream_Yolo'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
@@ -43,9 +43,9 @@ def generate_launch_description():
                 {'run_name'          : RUN_NAME},
                 {'image_topic'       : '/fisheye_front/image_rect'},
                 {'cam_info_topic'    : '/fisheye_front/camera_info'},
-                {'odom_topic'        : '/odom'},
+                {'odom_topic'        : '/localization_pose'},
                 {'frame_skip'        : 10},
-                {'frame_interval_sec': 5.0},
+                {'frame_interval_sec': 1.5},
                 {'confidence'        : 0.60},
                 {'model_path'        : '/root/yolo26m.pt'},
                 {'output_dir'        : OUTPUT_DIR},
