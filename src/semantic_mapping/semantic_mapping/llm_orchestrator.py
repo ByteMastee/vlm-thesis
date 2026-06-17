@@ -6,6 +6,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import String
+from geometry_msgs.msg import PoseStamped
 
 # ─────────────────────────────────────────────
 # USER INPUTS
@@ -13,6 +14,8 @@ from std_msgs.msg import String
 OLLAMA_URL  = "http://172.17.0.1:11434/api/chat"
 MODEL_NAME  = "llama3.2:3b"
 OFFSET_M    = 0.25
+GOAL_TOPIC  = '/goal_pose'
+GOAL_FRAME  = 'map'
 # ─────────────────────────────────────────────
 
 
@@ -42,6 +45,8 @@ class LLMOrchestratorNode(Node):
             lambda msg: self._map_cb(msg, 'ViT+VLM'),
             latched_qos
         )
+
+        self.goal_pub = self.create_publisher(PoseStamped, GOAL_TOPIC, 10)
 
         self.get_logger().info('LLM Orchestrator Node started.')
         self.get_logger().info('Waiting for semantic map on /semantic_map_json or /vit_semantic_map_json ...')
@@ -97,9 +102,24 @@ class LLMOrchestratorNode(Node):
                 else:
                     print(f"Matched Object : {object_name}")
                     print(f"Goal Coordinate: x={goal_x}, y={goal_y}")
+
+                self._publish_goal(goal_x, goal_y)
             else:
                 print("Could not parse goal coordinate from LLM response.")
             print()
+
+    def _publish_goal(self, goal_x, goal_y):
+        msg                        = PoseStamped()
+        msg.header.stamp           = self.get_clock().now().to_msg()
+        msg.header.frame_id        = GOAL_FRAME
+        msg.pose.position.x        = float(goal_x)
+        msg.pose.position.y        = float(goal_y)
+        msg.pose.position.z        = 0.0
+        msg.pose.orientation.w     = 1.0
+        self.goal_pub.publish(msg)
+        self.get_logger().info(
+            f'Goal published to {GOAL_TOPIC} — x={goal_x}, y={goal_y}'
+        )
 
     def _build_prompt(self, semantic_map, instruction):
         map_lines = []
