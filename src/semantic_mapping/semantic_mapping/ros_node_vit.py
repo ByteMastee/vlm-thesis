@@ -11,6 +11,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from visualization_msgs.msg import MarkerArray
+from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 import tf2_ros
@@ -111,6 +112,7 @@ class RosBridgeNodeVit(Node):
         self.marker_pub      = self.create_publisher(MarkerArray, '/vit_semantic_map_markers',     latched_qos)
         self.live_marker_pub = self.create_publisher(MarkerArray, '/vit_semantic_map_live',        10)
         self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vit_vlm_semantic_map_markers', latched_qos)
+        self.map_json_pub    = self.create_publisher(String,      '/vit_semantic_map_json',        latched_qos)
 
         self.create_subscription(CameraInfo,                  cam_info_topic, self.cam_info_cb, 10)
         self.create_subscription(Image,                       image_topic,    self.image_cb,    10)
@@ -352,6 +354,15 @@ class RosBridgeNodeVit(Node):
 
         with open(vlm_stack_path, 'r') as f:
             vlm_object_stack = json.load(f)
+
+        # --- Publish semantic map JSON to topic ---
+        json_msg      = String()
+        json_msg.data = json.dumps(vlm_object_stack)
+        self.map_json_pub.publish(json_msg)
+        self.get_logger().info(
+            f'[{self.run_name}] Semantic map JSON published to /vit_semantic_map_json — '
+            f'{len(vlm_object_stack)} objects.'
+        )
 
         robot_path_json = os.path.join(self.output_dir, f'{self.run_name}_vit_robot_path.json')
         if os.path.exists(robot_path_json):

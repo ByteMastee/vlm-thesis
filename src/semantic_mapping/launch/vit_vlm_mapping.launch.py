@@ -69,8 +69,16 @@ def generate_launch_description():
         ]
     )
 
+    llm_orchestrator_node = Node(
+        package    = 'semantic_mapping',
+        executable = 'llm_orchestrator_node',
+        name       = 'llm_orchestrator_node',
+        output     = 'screen',
+    )
+
     return LaunchDescription([
         fisheye_rectify_node,
         ros_node_vit,
         vlm_label_node_vit,
+        llm_orchestrator_node
     ])

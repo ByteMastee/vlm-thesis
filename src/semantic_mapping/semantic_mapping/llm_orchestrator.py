@@ -20,8 +20,9 @@ class LLMOrchestratorNode(Node):
     def __init__(self):
         super().__init__('llm_orchestrator_node')
 
-        self.semantic_map = None
-        self.map_received = threading.Event()
+        self.semantic_map  = None
+        self.pipeline_name = None
+        self.map_received  = threading.Event()
 
         latched_qos = QoSProfile(
             depth=1,
@@ -31,23 +32,30 @@ class LLMOrchestratorNode(Node):
         self.create_subscription(
             String,
             '/semantic_map_json',
-            self._map_cb,
+            lambda msg: self._map_cb(msg, 'YOLO+VLM'),
+            latched_qos
+        )
+
+        self.create_subscription(
+            String,
+            '/vit_semantic_map_json',
+            lambda msg: self._map_cb(msg, 'ViT+VLM'),
             latched_qos
         )
 
         self.get_logger().info('LLM Orchestrator Node started.')
-        self.get_logger().info('Waiting for semantic map on /semantic_map_json ...')
+        self.get_logger().info('Waiting for semantic map on /semantic_map_json or /vit_semantic_map_json ...')
 
-        # --- Start input loop in a separate thread ---
         thread = threading.Thread(target=self._input_loop, daemon=True)
         thread.start()
 
-    def _map_cb(self, msg):
+    def _map_cb(self, msg, pipeline_name):
         try:
-            self.semantic_map = json.loads(msg.data)
+            self.semantic_map  = json.loads(msg.data)
+            self.pipeline_name = pipeline_name
             self.get_logger().info(
-                f'Semantic map received — {len(self.semantic_map)} objects: '
-                f'{list(self.semantic_map.keys())}'
+                f'Semantic map received from [{pipeline_name}] — '
+                f'{len(self.semantic_map)} objects: {list(self.semantic_map.keys())}'
             )
             self.map_received.set()
         except Exception as e:
@@ -56,7 +64,7 @@ class LLMOrchestratorNode(Node):
     def _input_loop(self):
         self.get_logger().info('Waiting for semantic map before accepting instructions...')
         self.map_received.wait()
-        self.get_logger().info('Map ready. You can now enter navigation instructions.')
+        self.get_logger().info(f'Map ready [{self.pipeline_name}]. You can now enter navigation instructions.')
         print()
 
         while rclpy.ok():
@@ -71,7 +79,7 @@ class LLMOrchestratorNode(Node):
                 continue
 
             print("Querying LLM...")
-            prompt      = self._build_prompt(self.semantic_map, instruction)
+            prompt       = self._build_prompt(self.semantic_map, instruction)
             raw_response = self._query_llm(prompt)
 
             print(f"\nLLM Response:\n{raw_response}\n")
