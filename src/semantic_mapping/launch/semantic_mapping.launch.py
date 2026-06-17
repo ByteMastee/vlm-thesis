@@ -57,4 +57,12 @@ def generate_launch_description():
             ]
         ),
 
+        # --- LLM Orchestrator Node ---
+        Node(
+            package    = 'semantic_mapping',
+            executable = 'llm_orchestrator_node',
+            name       = 'llm_orchestrator_node',
+            output     = 'screen',
+        ),
+
     ])
