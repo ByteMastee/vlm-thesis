@@ -9,6 +9,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from visualization_msgs.msg import MarkerArray
+from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 import tf2_ros
@@ -98,11 +99,11 @@ class RosBridgeNode(Node):
         self.marker_pub      = self.create_publisher(MarkerArray, '/semantic_map_markers',     latched_qos)
         self.live_marker_pub = self.create_publisher(MarkerArray, '/semantic_map_live',        10)
         self.vlm_marker_pub  = self.create_publisher(MarkerArray, '/vlm_semantic_map_markers', latched_qos)
+        self.map_json_pub    = self.create_publisher(String,      '/semantic_map_json',        latched_qos)
 
-        self.create_subscription(CameraInfo, cam_info_topic, self.cam_info_cb, 10)
-        self.create_subscription(Image,      image_topic,    self.image_cb,    10)
+        self.create_subscription(CameraInfo,                  cam_info_topic, self.cam_info_cb, 10)
+        self.create_subscription(Image,                       image_topic,    self.image_cb,    10)
         self.create_subscription(PoseWithCovarianceStamped,   odom_topic,     self.odom_cb,     10)
-        
 
         self.vlm_client = self.create_client(Trigger, 'run_vlm_pipeline')
         self.create_service(Trigger, 'vlm_pipeline_done', self._vlm_done_cb)
@@ -335,6 +336,15 @@ class RosBridgeNode(Node):
 
         with open(vlm_stack_path, 'r') as f:
             vlm_object_stack = json.load(f)
+
+        # --- Publish semantic map JSON to topic ---
+        json_msg      = String()
+        json_msg.data = json.dumps(vlm_object_stack)
+        self.map_json_pub.publish(json_msg)
+        self.get_logger().info(
+            f'[{self.run_name}] Semantic map JSON published to /semantic_map_json — '
+            f'{len(vlm_object_stack)} objects.'
+        )
 
         vlm_markers = self.rviz_publisher.build_vlm_marker_array(
             vlm_object_stack=vlm_object_stack,

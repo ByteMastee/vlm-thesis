@@ -37,6 +37,7 @@ setup(
             'vlm_label_node_vit = semantic_mapping.vlm_label_node_vit:main',
             'sam2_map_node = semantic_mapping.sam2_map_node:main',
             'fisheye_rectify_node = semantic_mapping.fisheye_rectify_node:main',
+            'llm_orchestrator_node = semantic_mapping.llm_orchestrator:main',
         ],
     },
 )
