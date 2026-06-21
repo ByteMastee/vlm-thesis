@@ -5,7 +5,7 @@ from launch_ros.actions import Node
 import os
 
 RUN_NAME = 'VITp1_1'
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/Thesis_RWvit'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/RealVIT_Recording'
 OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 
