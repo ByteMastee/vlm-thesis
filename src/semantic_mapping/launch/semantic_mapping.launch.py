@@ -3,9 +3,9 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 # --- Run name: change ONLY here for each new run ---
-RUN_NAME = 'E1_Path1'
+RUN_NAME = 'E2_Path1'
 
-BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/New'
+BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/VideoRecording'
 OUTPUT_DIR      = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
 
@@ -49,10 +49,9 @@ def generate_launch_description():
                 {'process_delay'     : 2.0},
                 {'env_frame_interval': 8},
                 {'ground_truth'      : [
-                    'chair_1:-3.0:2.0',
-                    'chair_2:-3.5:-2.5',
-                    'table:2.0:2.5',
-                    'couch:3.5:0'
+                    'chair_1:-4.5:-2.0',
+                    'chair_2:-3.0:3.5',
+                    'round_table_with_chairs:4.5:1.9'
                 ]},
             ]
         ),

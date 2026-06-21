@@ -7,7 +7,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     run_name_arg = DeclareLaunchArgument(
-        'run_name', default_value='Env1_Path2',
+        'run_name', default_value='Env1_Path1',
         description='Run identifier for output files'
     )
     process_delay_arg = DeclareLaunchArgument(
@@ -15,7 +15,7 @@ def generate_launch_description():
         description='Seconds to wait before triggering final processing'
     )
     output_dir_arg = DeclareLaunchArgument(
-        'output_dir', default_value='/root/UVC_ws/vf_robot_model_ros2/Final_Output/Thesis_SIMViT',
+        'output_dir', default_value='/root/UVC_ws/vf_robot_model_ros2/Final_Output/ViTVideoRecording',
         description='Override output directory (leave empty to auto-build from run_name)'
     )
 
