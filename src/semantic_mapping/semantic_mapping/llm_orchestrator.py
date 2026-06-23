@@ -194,7 +194,7 @@ NOT_FOUND
             if line.startswith("OBJECT:"):
                 object_name = line.split("OBJECT:")[-1].strip()
             elif line.startswith("DIRECTION:"):
-                direction = line.split("DIRECTION:")[-1].strip().lower()
+                direction = line.split("DIRECTION:")[-1].strip().lower().split()[0]
             elif line.startswith("GOAL:"):
                 goal_part = line.split("GOAL:")[-1].strip()
                 for part in goal_part.split(","):
