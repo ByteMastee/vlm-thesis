@@ -4,7 +4,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import os
 
-RUN_NAME = 'VITp1_1'
+RUN_NAME = 'P1_VIT_RW'
 BASE_OUTPUT_DIR = '/root/UVC_ws/vf_robot_model_ros2/Final_Output/RealVIT_Recording'
 OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, RUN_NAME)
 
