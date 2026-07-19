@@ -16,7 +16,7 @@ The thesis implements and benchmarks three semantic mapping pipelines, all built
 | **Pipeline 2** | YOLO26 | Qwen2.5-VL 3B post-processing |
 | **Pipeline 3** | SAM2-small (open-vocabulary) | Qwen2.5-VL 3B |
 
-**Shared spatial estimation backbone:** ray casting → pairwise triangulation → DBSCAN clustering, used to localize detected/segmented objects in 3D from 2D image detections and robot pose.
+**Shared spatial estimation backbone:** ray casting → pairwise triangulation → DBSCAN clustering, used to estimate the 2D position (x, y) of detected/segmented objects in the robot's odometry frame, from 2D image-plane detections and the camera-to-odom TF transform chain. The output of each pipeline is a 2D semantic map of (label, x, y) object instances.
 
 **Evaluation:** 5 Gazebo simulation environments + 1 real-world lab setting, assessed across 5 metrics — SPE, SLA, F1-Score, MCS, and SSS.
 
@@ -28,8 +28,7 @@ The thesis implements and benchmarks three semantic mapping pipelines, all built
 
 - **Middleware:** ROS2 Humble
 - **Simulation:** Gazebo
-- **Navigation:** Nav2
-- **Models:** YOLO26 (Ultralytics), SAM2-small, Qwen2.5-VL 3B (4-bit quantized, local deployment), Moondream2, Llama 3.2 3B (via Ollama)
+- **Models:** YOLO26 (Ultralytics), SAM2-small, Qwen2.5-VL 3B (4-bit quantized, local deployment), Llama 3.2 3B (via Ollama)
 - **Sensors:** Fisheye camera (170° FoV, equidistant projection)
 
 ## Repository Structure
@@ -56,9 +55,7 @@ Each branch corresponds to a distinct experiment, pipeline variant, or post-thes
 | `two_cam_improvement` | Post-thesis extension: dual-camera architecture (simulation) |
 | `two_cam_improvement_realworld` | Post-thesis extension: dual-camera architecture validated on real-world data |
 | `live_stream_mapping` | Post-thesis extension: live/streaming semantic mapping |
-| `llm_orchestrator` | Post-thesis extension: natural-language-to-navigation-goal orchestration via Llama 3.2 3B (Ollama) and Nav2 |
-
-> Branch descriptions above are inferred from commit history and naming for this README — please verify each mapping is accurate before treating this table as final.
+| `llm_orchestrator` | Post-thesis extension: natural-language-instruction-to-navigation-goal orchestration via Llama 3.2 3B (Ollama); outputs Nav2-compatible goal poses (no Nav2 stack code included in this repo) |
 
 ## Setup
 
