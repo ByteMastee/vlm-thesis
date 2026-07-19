@@ -3,8 +3,21 @@ build/
 install/
 log/
 
+# Python
 __pycache__/
 *.pyc
+*.egg-info/
+.venv/
+venv/
 
+# Environment / secrets
+.env
+*.pem
+*.key
+
+# Editor
 .vscode/
-.idea/
+*.swp
+
+# OS
+.DS_Store
