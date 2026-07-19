@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Vision Language Models for Context-Aware Scene Understanding in Autonomous Systems"
+type: software
+authors:
+  - family-names: "Sampath Kumar"
+    given-names: "Hariram"
+    affiliation: "Eötvös Loránd University (ELTE), Faculty of Informatics — Erasmus Mundus Joint Master in Intelligent Field Robotic Systems (IFRoS)"
+version: 1.0.0
+date-released: 2026-07-20
+repository-code: "https://github.com/ByteMastee/vlm-thesis"
+abstract: >
+  Implementation and benchmarking of three semantic mapping pipelines for
+  indoor mobile robotics under ROS2 Humble: a classical YOLO26 baseline,
+  a YOLO26 + Qwen2.5-VL 3B post-processing pipeline, and a fully
+  open-vocabulary SAM2-small + Qwen2.5-VL 3B pipeline. All pipelines share
+  a spatial estimation backbone (ray casting, pairwise triangulation, and
+  DBSCAN clustering), evaluated across five Gazebo simulation environments
+  and one real-world lab setting.
+keywords:
+  - robotics
+  - semantic mapping
+  - vision-language models
+  - ROS2
+  - autonomous systems
+  - scene understanding
+license: Apache-2.0
